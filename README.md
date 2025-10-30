@@ -156,8 +156,8 @@ pnpm preview
 
 ## 개발 팁
 
-### Cursor AI에서 작업하기
-1. 이 프로젝트를 Cursor AI에서 열기
+
+1. 이 프로젝트를 열기
 2. `npm install`로 의존성 설치
 3. `npm run dev`로 개발 서버 실행
 4. Cursor의 AI 기능으로 코드 수정 및 개선
