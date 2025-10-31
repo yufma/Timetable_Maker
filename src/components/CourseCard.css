@@ -1,0 +1,105 @@
+.course-card {
+  background-color: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.course-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.course-title-section {
+  flex: 1;
+}
+
+.course-name {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #2c2c2c;
+  margin-bottom: 0.75rem;
+}
+
+.course-tags {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.tag {
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  background-color: #e8e8e8;
+  color: #666;
+}
+
+.tag.required {
+  background-color: #ffe5e5;
+  color: #d32f2f;
+}
+
+.course-department {
+  font-size: 0.95rem;
+  color: #666;
+  margin-top: 0.5rem;
+}
+
+.favorite-button {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0.25rem;
+  transition: transform 0.2s;
+}
+
+.favorite-button:hover {
+  transform: scale(1.1);
+}
+
+.favorite-button.active {
+  color: #ff4444;
+}
+
+.section-comparison {
+  margin-bottom: 1rem;
+}
+
+.compare-button {
+  background: none;
+  border: none;
+  color: #2c2c2c;
+  font-size: 0.95rem;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0.5rem 0;
+}
+
+.compare-button:hover {
+  color: #1a1a1a;
+}
+
+.course-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+@media (max-width: 640px) {
+  .course-card {
+    padding: 1rem;
+  }
+  
+  .course-name {
+    font-size: 1.25rem;
+  }
+}
+

@@ -1,0 +1,113 @@
+.header {
+  background-color: #2c2c2c;
+  color: white;
+  padding: 1rem 0;
+  width: 100%;
+}
+
+.header-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: white;
+  text-decoration: none;
+}
+
+.logo:hover {
+  opacity: 0.8;
+}
+
+.logo-icon {
+  font-size: 1.5rem;
+}
+
+.nav {
+  display: flex;
+  gap: 2rem;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: white;
+  text-decoration: none;
+  font-size: 1rem;
+  transition: opacity 0.3s;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.nav-item:hover {
+  opacity: 0.8;
+}
+
+.nav-item:active {
+  opacity: 0.9;
+}
+
+.nav-item.active {
+  font-weight: 600;
+  opacity: 1;
+}
+
+.nav-icon {
+  font-size: 1.2rem;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.user-name {
+  font-size: 1rem;
+}
+
+.logout {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: white;
+  background: none;
+  border: none;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: opacity 0.3s;
+  padding: 0;
+  font-family: inherit;
+}
+
+.logout:hover {
+  opacity: 0.8;
+}
+
+.logout-icon {
+  font-size: 1.2rem;
+}
+
+@media (max-width: 640px) {
+  .header-content {
+    flex-direction: column;
+    gap: 1rem;
+  }
+  
+  .nav {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 1rem;
+  }
+}
+

@@ -1,0 +1,56 @@
+.course-section {
+  padding: 1rem;
+  background-color: #f9f9f9;
+  border-radius: 8px;
+  border-left: 3px solid #2c2c2c;
+}
+
+.section-header {
+  margin-bottom: 0.75rem;
+}
+
+.section-number {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #2c2c2c;
+}
+
+.section-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.detail-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+}
+
+.detail-icon {
+  font-size: 1rem;
+  width: 1.25rem;
+  text-align: center;
+}
+
+.detail-label {
+  color: #666;
+  font-weight: 500;
+  min-width: 70px;
+}
+
+.detail-value {
+  color: #2c2c2c;
+}
+
+@media (max-width: 640px) {
+  .detail-item {
+    font-size: 0.875rem;
+  }
+  
+  .detail-label {
+    min-width: 60px;
+  }
+}
+

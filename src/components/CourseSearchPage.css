@@ -1,0 +1,73 @@
+.course-search-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.page-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.page-title {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #2c2c2c;
+  margin-bottom: 0.5rem;
+}
+
+.page-subtitle {
+  font-size: 1.125rem;
+  color: #666;
+}
+
+.search-section {
+  margin-bottom: 2rem;
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.result-count {
+  margin-top: 1rem;
+  color: #666;
+  font-size: 0.95rem;
+}
+
+.courses-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.no-results {
+  text-align: center;
+  padding: 3rem 2rem;
+  background-color: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.no-results p {
+  font-size: 1.125rem;
+  color: #666;
+}
+
+@media (max-width: 640px) {
+  .filters {
+    grid-template-columns: 1fr;
+  }
+  
+  .page-title {
+    font-size: 1.5rem;
+  }
+  
+  .page-subtitle {
+    font-size: 1rem;
+  }
+}
+

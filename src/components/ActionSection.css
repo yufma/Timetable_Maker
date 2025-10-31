@@ -1,0 +1,19 @@
+.action-section {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem;
+  margin-bottom: 4rem;
+}
+
+@media (max-width: 968px) {
+  .action-section {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .action-section {
+    grid-template-columns: 1fr;
+  }
+}
+
