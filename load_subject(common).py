@@ -10,16 +10,16 @@ import re
 import time
 
 
-def load_department_subjects(department_name: str = "인공지능공학과") -> List[Dict[str, Any]]:
-    """depart_json/{department_name}.json 파일을 읽어 과목 리스트를 반환한다."""
+def load_common_subjects(json_filename: str) -> List[Dict[str, Any]]:
+    """common_subjects_json/{json_filename}.json 파일을 읽어 과목 리스트를 반환한다."""
     script_dir = Path(__file__).resolve().parent
-    json_path = script_dir / "depart_json" / f"{department_name}.json"
+    json_path = script_dir / "common_subjects_json" / json_filename
     with open(json_path, "r", encoding="utf-8") as f:
         data = json.load(f)
     return data
 
 def load_subject_depart(text: str | None = None):
-    driver = essentials.build_driver(False, "subject_excel")
+    driver = essentials.build_driver(False, "common_subject_excel")
     driver.get(essentials.LecPlanHistory_url)
 
     # 지정한 버튼 클릭 → 입력창에 텍스트 입력
@@ -165,7 +165,7 @@ def search_and_visit_result_links(driver, max_rows: int | None = None):
                     break
                 time.sleep(0.2)
 
-            # 페이지 로드 및 iframe 대기
+            # 페이지 로드 및 타입 판정
             if not new_window_opened:
                 # 같은 창에서 갱신된 경우
                 try:
@@ -175,6 +175,61 @@ def search_and_visit_result_links(driver, max_rows: int | None = None):
                 except Exception:
                     pass
 
+            # 페이지 타입 판정: 타입 2인지 확인
+            is_type2 = False
+            try:
+                type2_button_xpath = "/html/body/form/div[3]/div[2]/div[1]/span/input"
+                type2_element = driver.find_elements(By.XPATH, type2_button_xpath)
+                if type2_element:
+                    is_type2 = True
+                    print(f"타입 2 페이지 감지: {safe_file_name}")
+            except Exception:
+                pass
+
+            # 타입별 처리
+            if is_type2:
+                # 타입 2: 페이지에서 정보 파싱하여 JSON 저장
+                print(f"타입 2 페이지 처리 중: {safe_file_name}")
+                try:
+                    # 페이지 로드 완료 대기
+                    WebDriverWait(driver, 10).until(
+                        lambda d: d.execute_script("return document.readyState") == "complete"
+                    )
+                    time.sleep(0.3)  # 추가 로딩 대기
+                    
+                    # 데이터 파싱 및 저장
+                    parse_type2_page(driver, safe_file_name)
+                    
+                    # 저장 완료 후 이전 페이지로 복귀
+                    if new_window_opened:
+                        driver.close()
+                        driver.switch_to.window(list(prev_handles)[0])
+                    else:
+                        driver.back()
+                        WebDriverWait(driver, 10).until(
+                            EC.presence_of_element_located((By.XPATH, tbody_xpath))
+                        )
+                    time.sleep(0.2)  # 복귀 후 대기
+                except Exception as e:
+                    print(f"타입 2 처리 실패 ({safe_file_name}): {e}")
+                    # 실패해도 이전 페이지로 복귀
+                    if new_window_opened:
+                        try:
+                            driver.close()
+                            driver.switch_to.window(list(prev_handles)[0])
+                        except Exception:
+                            pass
+                    else:
+                        try:
+                            driver.back()
+                            WebDriverWait(driver, 10).until(
+                                EC.presence_of_element_located((By.XPATH, tbody_xpath))
+                            )
+                        except Exception:
+                            pass
+                continue
+
+            # 타입 1: 기존 iframe 처리
             # iframe이 나타날 때까지 대기 (다운로드 페이지 로드 확인)
             try:
                 WebDriverWait(driver, 15).until(
@@ -225,33 +280,33 @@ def search_and_visit_result_links(driver, max_rows: int | None = None):
             continue
 
 
-def run_subject_searches_from_data(depart_restrict: list = []):
-    """JSON 데이터에서 전공 계열의 학수번호만 골라 순차 검색 및 결과 링크 순회."""
+def run_subject_searches_from_data(json_restrict: list = []):
+    """common_subjects_json의 JSON 파일들에서 학수번호를 골라 순차 검색 및 결과 링크 순회."""
     script_dir = Path(__file__).resolve().parent
     
-    # depart_restrict가 비어있으면 depart_excels의 모든 엑셀 파일 처리
-    if not depart_restrict:
-        excel_files = essentials.list_filenames("depart_excels", pattern="*.xlsx")
-        # 파일명에서 확장자 제거하여 학과명 추출
-        depart_restrict = [Path(f).stem for f in excel_files]
-        print(f"제한 없음: {len(depart_restrict)}개 학과를 모두 처리합니다.")
+    # json_restrict가 비어있으면 모든 JSON 파일 처리
+    if not json_restrict:
+        json_files = essentials.list_filenames("common_subjects_json", pattern="*.json")
+        print(f"제한 없음: {len(json_files)}개 JSON 파일을 모두 처리합니다.")
     else:
-        print(f"제한 목록: {len(depart_restrict)}개 학과를 처리합니다.")
+        # 확장자가 없으면 .json 추가
+        json_files = [f if f.endswith(".json") else f"{f}.json" for f in json_restrict]
+        print(f"제한 목록: {len(json_files)}개 JSON 파일을 처리합니다.")
     
-    # 모든 학과의 학수번호 수집
+    # 모든 JSON 파일의 학수번호 수집
     all_codes = set()
-    for dept_name in depart_restrict:
+    for json_filename in json_files:
         try:
-            subjects = load_department_subjects(dept_name)
-            codes = extract_major_course_codes(subjects)
+            subjects = load_common_subjects(json_filename)
+            codes = extract_all_course_codes(subjects)
             all_codes.update(codes)
-            print(f"{dept_name}: {len(codes)}개 학수번호")
+            print(f"{json_filename}: {len(codes)}개 학수번호")
         except Exception as e:
-            print(f"{dept_name} 읽기 실패: {e}")
+            print(f"{json_filename} 읽기 실패: {e}")
             continue
     
     if not all_codes:
-        print("전공 학수번호가 없습니다.")
+        print("학수번호가 없습니다.")
         return None
     
     codes = sorted(list(all_codes))
@@ -283,13 +338,12 @@ def run_subject_searches_from_data(depart_restrict: list = []):
     return driver
 
 
-def extract_major_course_codes(subjects: List[Dict[str, Any]]) -> set[str]:
-    """subjects에서 '종 별'이 '전공'으로 시작하는 항목의 학수번호만 집합으로 추출한다."""
+def extract_all_course_codes(subjects: List[Dict[str, Any]]) -> set[str]:
+    """subjects에서 모든 항목의 학수번호를 집합으로 추출한다."""
     codes: set[str] = set()
     for row in subjects:
-        kind = str(row.get("종 별", ""))
         code = row.get("학수번호")
-        if kind.startswith("전공") and isinstance(code, str) and code.strip():
+        if isinstance(code, str) and code.strip():
             codes.add(code.strip())
     return codes
 
@@ -335,14 +389,64 @@ def download_from_current_page(driver, filename: str = ""):
     driver.switch_to.default_content()
 
 
+def parse_type2_page(driver, filename: str) -> bool:
+    """타입 2 페이지에서 정보를 파싱하여 JSON 파일로 저장한다."""
+    script_dir = Path(__file__).resolve().parent
+    json_dir = script_dir / "common_subject_json"
+    json_dir.mkdir(parents=True, exist_ok=True)
+    
+    # XPath 매핑
+    xpath_mapping = {
+        "강의명": "/html/body/form/div[3]/div[2]/div[2]/table[1]/tbody/tr[1]/td[1]/span",
+        "교수명": "/html/body/form/div[3]/div[2]/div[2]/table[2]/tbody/tr[4]/td[1]/span",
+        "학점": "/html/body/form/div[3]/div[2]/div[2]/table[2]/tbody/tr[3]/td[1]/span[1]",
+        "강의시간": "/html/body/form/div[3]/div[2]/div[2]/table[1]/tbody/tr[3]/td[3]/span",
+        "평가방식": "/html/body/form/div[3]/div[2]/div[2]/table[2]/tbody/tr[2]/td[3]/span",
+        "중간고사": "/html/body/form/div[3]/div[2]/div[2]/table[3]/tbody/tr[14]/td/table/tbody/tr[2]/td[1]/span",
+        "기말고사": "/html/body/form/div[3]/div[2]/div[2]/table[3]/tbody/tr[14]/td/table/tbody/tr[2]/td[2]/span",
+        "출석": "/html/body/form/div[3]/div[2]/div[2]/table[3]/tbody/tr[14]/td/table/tbody/tr[2]/td[3]/span",
+        "과제": "/html/body/form/div[3]/div[2]/div[2]/table[3]/tbody/tr[14]/td/table/tbody/tr[2]/td[4]/span",
+        "퀴즈": "/html/body/form/div[3]/div[2]/div[2]/table[3]/tbody/tr[14]/td/table/tbody/tr[2]/td[5]/span",
+        "토론": "/html/body/form/div[3]/div[2]/div[2]/table[3]/tbody/tr[14]/td/table/tbody/tr[2]/td[6]/span",
+        "기타": "/html/body/form/div[3]/div[2]/div[2]/table[3]/tbody/tr[14]/td/table/tbody/tr[2]/td[7]/span",
+    }
+    
+    # 데이터 추출
+    data = {}
+    wait = WebDriverWait(driver, 10)
+    
+    for key, xpath in xpath_mapping.items():
+        try:
+            element = wait.until(EC.presence_of_element_located((By.XPATH, xpath)))
+            value = (element.text or "").strip()
+            data[key] = value if value else ""
+        except Exception as e:
+            # 요소를 찾지 못하면 빈 문자열
+            data[key] = ""
+            print(f"  경고: {key} 추출 실패 ({xpath})")
+    
+    # JSON 파일로 저장
+    json_filename = f"{filename}.json"
+    json_path = json_dir / json_filename
+    
+    try:
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        print(f"  ✓ 타입 2 JSON 저장 완료: {json_filename}")
+        return True
+    except Exception as e:
+        print(f"  ✗ JSON 저장 실패 ({json_filename}): {e}")
+        return False
+
+
 def can_search_by_course_code(code: str, subjects: List[Dict[str, Any]]) -> bool:
-    """주어진 code가 전공 계열 항목의 학수번호에 존재하는지 여부 반환."""
+    """주어진 code가 과목 리스트의 학수번호에 존재하는지 여부 반환."""
     if not code:
         return False
-    return code.strip() in extract_major_course_codes(subjects)
+    return code.strip() in extract_all_course_codes(subjects)
 
 if __name__ == "__main__":
-    # JSON 기반으로 전공 학수번호를 순회 검색 (code_semester와 일치하는 모든 행 처리)
-    # essentials.departs_restrict를 인수로 전달 (비어있으면 모든 학과 처리)
-    driver = run_subject_searches_from_data(essentials.departs_restrict)
-    print("\n전공 학수번호 기반 검색 및 링크 순회 완료")
+    # JSON 기반으로 학수번호를 순회 검색 (code_semester와 일치하는 모든 행 처리)
+    # 빈 리스트 전달 시 모든 JSON 파일 처리
+    driver = run_subject_searches_from_data([])
+    print("\n교양 과목 학수번호 기반 검색 및 링크 순회 완료")

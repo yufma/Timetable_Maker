@@ -21,7 +21,12 @@ def load_departs(depart_restrict: list = []):
     driver = essentials.build_driver(False, "depart_excels")
     driver.get(essentials.curriculum_url)
 
+    # depart_restrict가 비어있으면 모든 학과 처리, 아니면 지정된 학과만 처리
     restrict = {norm(x) for x in depart_restrict} if depart_restrict else set()
+    if restrict:
+        print(f"📋 제한 목록: {sorted(restrict)}")
+    else:
+        print("📋 제한 없음: 모든 학과를 처리합니다.")
 
 
        # ── 순회: tr의 두 번째 td(학부/학과명) 확인 → 필터 → 4번째 td 버튼 클릭
@@ -82,11 +87,14 @@ def load_departs(depart_restrict: list = []):
             continue
 
         # 제한 목록이 있으면 필터 (정확 일치)
-        if restrict and dept_name not in restrict:
-            i += 1
-            continue
-
-        print(f"✅ 대상 행 #{i}: {dept_name}")
+        if restrict:
+            if dept_name not in restrict:
+                print(f"⏭️  건너뜀 행 #{i}: {dept_name} (제한 목록에 없음)")
+                i += 1
+                continue
+            print(f"✅ 대상 행 #{i}: {dept_name} (제한 목록에 있음)")
+        else:
+            print(f"✅ 대상 행 #{i}: {dept_name}")
 
         # ❸ 클릭 전 상태 저장 (동기화용)
         prev_tbody = driver.find_element(By.XPATH, tbody_xpath)
@@ -189,4 +197,4 @@ def load_departs(depart_restrict: list = []):
 
     return
 if __name__ == "__main__":
-    load_departs([])
+    load_departs(essentials.departs_restrict)
