@@ -73,6 +73,30 @@ def load_departs(depart_restrict: list = []):
             time.sleep(0.3)
         return False
 
+    def wait_for_pdf_download(expected_stem: str, appear_timeout: float = 15.0, finish_timeout: float = 90.0) -> bool:
+        # 1) 다운로드 시작 대기: .crdownload 또는 최종 파일 등장
+        start = time.time()
+        started = False
+        while time.time() - start < appear_timeout:
+            has_partial = any((f.stem == expected_stem and str(f).endswith('.crdownload')) for f in download_dir.glob("*"))
+            has_final = any((f.stem == expected_stem and f.suffix.lower() == '.pdf') for f in download_dir.glob("*.pdf"))
+            if has_partial or has_final:
+                started = True
+                break
+            time.sleep(0.2)
+        if not started:
+            return False
+
+        # 2) 다운로드 완료 대기: 최종 파일 존재하며 .crdownload 사라짐
+        start2 = time.time()
+        while time.time() - start2 < finish_timeout:
+            has_final = any((f.stem == expected_stem and f.suffix.lower() == '.pdf') for f in download_dir.glob("*.pdf"))
+            has_partial = any((f.stem == expected_stem and str(f).endswith('.crdownload')) for f in download_dir.glob("*"))
+            if has_final and not has_partial:
+                return True
+            time.sleep(0.3)
+        return False
+
     i = 1
     while i <= row_count:
         # ❷ 매 루프마다 '다시 찾기' → stale 방지
@@ -114,82 +138,172 @@ def load_departs(depart_restrict: list = []):
                 continue
 
                 # ❺ 팝업/새창 vs 같은 탭 갱신 동기화
-        # ==== 팝업/같은 탭 통합 대기: iframe#ireport가 나타난 창을 탐색 ====
-        target_found = False
-        end_time = time.time() + 12.0
-        candidate_handles = list(prev_handles)  # 원래 창 포함
-        while time.time() < end_time and not target_found:
-            all_handles = driver.window_handles
-            for h in all_handles:
-                try:
-                    driver.switch_to.window(h)
-                    # DOM 로드 대기 (짧게)
-                    try:
-                        WebDriverWait(driver, 2).until(
-                            lambda d: d.execute_script("return document.readyState") == "complete"
-                        )
-                    except Exception:
-                        pass
-                    # iframe 존재 확인
-                    if driver.find_elements(By.ID, "ireport"):
-                        target_found = True
-                        break
-                except Exception:
-                    continue
-            time.sleep(0.2)
+        time.sleep(0.3)
+        new_handles = list(set(driver.window_handles) - prev_handles)
 
-        if not target_found:
-            # 같은 탭 갱신 케이스로 간주하고 테이블 복귀만 보장
+        if new_handles:
+            # ==== 팝업/새 창 케이스 ====
+            driver.switch_to.window(new_handles[0])
+
+            # URL이 about:blank라도 상관 없이, "DOM이 채워졌는지"를 기다린다.
+            # 1) readyState == 'complete' AND
+            # 2) body가 있고, 내용이 충분히 채워졌는지(길이/자식노드 수) 또는
+            # 3) 우리가 기대하는 루트 요소(예: 상세 테이블/컨테이너 id)가 등장했는지
+            def popup_dom_ready(d):
+                try:
+                    if d.execute_script("return document.readyState") != "complete":
+                        return False
+                    # 바디가 충분히 렌더링됐는지(길이나 자식 수로 추정)
+                    has_body = d.execute_script(
+                        "return !!document.body && (document.body.innerHTML.length > 500 || document.body.children.length > 0);"
+                    )
+                    return bool(has_body)
+                except Exception:
+                    return False
+
+            WebDriverWait(driver, 10).until(popup_dom_ready)
+            iframe = wait.until(EC.presence_of_element_located((By.ID, "ireport")))
+            driver.switch_to.frame(iframe)
+
+
+            wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="report_menu_save_button"]'))).click()
+            
+            filename_input = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located(
+                (By.XPATH, '//*[@id="report_download_main_option_frame"]/div/div[2]/input')
+            )
+            )
+            filename_input.clear()
+            filename_input.send_keys(f"{dept_name}")
+
+            sheet_select = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.XPATH, '//*[@id="select_label"]')))
+            select = Select(sheet_select)
+            select.select_by_value("xlsx")
+
+            wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="download_sub_option_change_button"]'))).click()
+
+            sheet_select = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.XPATH, '//*[@id="report_download_sub_option_frame"]/div/div[1]/div[1]/select')))
+            select = Select(sheet_select)
+            select.select_by_value("4")
+
+            wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="download_sub_option_save_button"]'))).click()
+            wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="download_main_option_download_button"]'))).click()
+
+            time.sleep(0.8)  # Excel 다운로드 완료 대기
+
+            # PDF 다운로드를 위해 다시 저장 다이얼로그 열기 시도
+            # 다이얼로그가 닫혔는지 확인 (더 정확한 체크)
+            dialog_open = False
+            try:
+                # select_label 요소가 여전히 존재하고 클릭 가능한지 확인
+                sheet_select = WebDriverWait(driver, 2).until(
+                    EC.element_to_be_clickable((By.XPATH, '//*[@id="select_label"]'))
+                )
+                # 다운로드 버튼도 존재하는지 확인
+                download_btn = WebDriverWait(driver, 2).until(
+                    EC.element_to_be_clickable((By.XPATH, '//*[@id="download_main_option_download_button"]'))
+                )
+                dialog_open = True
+            except Exception:
+                dialog_open = False
+            
+            if not dialog_open:
+                # 다이얼로그가 닫혔으면 다시 저장 버튼 클릭
+                wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="report_menu_save_button"]'))).click()
+                time.sleep(0.3)  # 저장 버튼 클릭 후 다이얼로그 열릴 때까지 대기
+                
+                # 다이얼로그가 완전히 열릴 때까지 대기
+                WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.XPATH, '//*[@id="report_download_main_option_frame"]'))
+                )
+                time.sleep(0.2)  # 추가 로딩 대기
+                
+                # 파일명 입력 필드 대기 및 재입력
+                filename_input = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.XPATH, '//*[@id="report_download_main_option_frame"]/div/div[2]/input'))
+                )
+                filename_input.clear()
+                time.sleep(0.1)
+                filename_input.send_keys(f"{dept_name}")
+                time.sleep(0.2)  # 입력 완료 대기
+            
+            # select 요소 가져오기 (클릭 가능할 때까지 대기)
+            sheet_select = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.XPATH, '//*[@id="select_label"]'))
+            )
+            
+            # select 요소가 보이도록 스크롤
+            try:
+                driver.execute_script("arguments[0].scrollIntoView({block:'center'});", sheet_select)
+                time.sleep(0.2)
+            except Exception:
+                pass
+            
+            # 파일 형식 선택 (pdf) - 여러 방법 시도
+            try:
+                select = Select(sheet_select)
+                select.select_by_value("pdf")
+                time.sleep(0.2)  # 선택 후 대기
+            except Exception:
+                # Select가 실패하면 JavaScript로 직접 선택
+                try:
+                    driver.execute_script(
+                        "arguments[0].value = 'pdf'; "
+                        "var event = new Event('change', { bubbles: true }); "
+                        "arguments[0].dispatchEvent(event);",
+                        sheet_select
+                    )
+                    time.sleep(0.2)
+                except Exception as e:
+                    print(f"PDF 형식 선택 실패: {e}")
+
+            # PDF 다운로드 버튼 찾기 및 클릭 (여러 방법 시도)
+            download_btn_xpath = '//*[@id="download_main_option_download_button"]'
+            try:
+                download_btn = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.XPATH, download_btn_xpath))
+                )
+                # 버튼이 보이도록 스크롤
+                try:
+                    driver.execute_script("arguments[0].scrollIntoView({block:'center'});", download_btn)
+                    time.sleep(0.2)
+                except Exception:
+                    pass
+                
+                # 일반 클릭 시도
+                try:
+                    download_btn.click()
+                except Exception:
+                    # JavaScript 클릭 시도
+                    try:
+                        driver.execute_script("arguments[0].click();", download_btn)
+                    except Exception:
+                        # 마지막으로 XPath로 직접 클릭
+                        wait.until(EC.element_to_be_clickable((By.XPATH, download_btn_xpath))).click()
+            except Exception as e:
+                print(f"PDF 다운로드 버튼 클릭 실패: {e}")
+            
+            # PDF 다운로드 완료 대기
+            pdf_downloaded = wait_for_pdf_download(dept_name, appear_timeout=15.0, finish_timeout=90.0)
+            if pdf_downloaded:
+                print(f"  ✅ PDF 다운로드 완료: {dept_name}")
+            else:
+                print(f"  ⚠️ PDF 다운로드 타임아웃 또는 실패: {dept_name}")
+
+            # 작업 끝나면 닫고 원창 복귀
+            driver.close()
+            driver.switch_to.window(next(iter(prev_handles)))
+            wait.until(EC.presence_of_element_located((By.XPATH, tbody_xpath)))
+
+        else:
+            # ==== 같은 탭(전체/부분) 갱신 케이스 ====
             try:
                 wait.until(EC.staleness_of(prev_tbody))
             except Exception:
                 pass
             wait.until(EC.presence_of_element_located((By.XPATH, tbody_xpath)))
-            i += 1
-            continue
-
-        # ===== iframe 안에서 저장 진행 =====
-        iframe = wait.until(EC.presence_of_element_located((By.ID, "ireport")))
-        driver.switch_to.frame(iframe)
-
-        wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="report_menu_save_button"]'))).click()
-        filename_input = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.XPATH, '//*[@id="report_download_main_option_frame"]/div/div[2]/input'))
-        )
-        filename_input.clear()
-        filename_input.send_keys(f"{dept_name}")
-
-        sheet_select = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.XPATH, '//*[@id="select_label"]'))
-        )
-        select = Select(sheet_select)
-        select.select_by_value("xlsx")
-
-        wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="download_sub_option_change_button"]'))).click()
-        sheet_select = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.XPATH, '//*[@id="report_download_sub_option_frame"]/div/div[1]/div[1]/select'))
-        )
-        select = Select(sheet_select)
-        select.select_by_value("4")
-
-        wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="download_sub_option_save_button"]'))).click()
-        wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="download_main_option_download_button"]'))).click()
-
-        # 고정 대기: 저장 후 다운로드 완료까지 여유 시간
-        time.sleep(3)
-
-        # 작업 끝나면 창 정리 및 원창 복귀 시도
-        try:
-            cur = driver.current_window_handle
-            if cur not in prev_handles and len(driver.window_handles) > 1:
-                driver.close()
-                driver.switch_to.window(next(iter(prev_handles)))
-        except Exception:
-            try:
-                driver.switch_to.window(next(iter(prev_handles)))
-            except Exception:
-                pass
-        wait.until(EC.presence_of_element_located((By.XPATH, tbody_xpath)))
 
 
         # ❻ 기존 '순차 처리' 흐름 유지: 다음 행으로

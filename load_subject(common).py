@@ -352,6 +352,33 @@ def download_from_current_page(driver, filename: str = ""):
     """현재 페이지(iframe 내부)에서 다운로드를 수행한다. load_curriculum.py 구조 참고."""
     wait = WebDriverWait(driver, 10)
     
+    # 다운로드 완료 대기 헬퍼 (타임아웃 포함)
+    download_dir = Path(essentials._resolve_download_dir("common_subject_excel"))
+
+    def wait_for_pdf_download(expected_stem: str, appear_timeout: float = 15.0, finish_timeout: float = 90.0) -> bool:
+        # 1) 다운로드 시작 대기: .crdownload 또는 최종 파일 등장
+        start = time.time()
+        started = False
+        while time.time() - start < appear_timeout:
+            has_partial = any((f.stem == expected_stem and str(f).endswith('.crdownload')) for f in download_dir.glob("*"))
+            has_final = any((f.stem == expected_stem and f.suffix.lower() == '.pdf') for f in download_dir.glob("*.pdf"))
+            if has_partial or has_final:
+                started = True
+                break
+            time.sleep(0.2)
+        if not started:
+            return False
+
+        # 2) 다운로드 완료 대기: 최종 파일 존재하며 .crdownload 사라짐
+        start2 = time.time()
+        while time.time() - start2 < finish_timeout:
+            has_final = any((f.stem == expected_stem and f.suffix.lower() == '.pdf') for f in download_dir.glob("*.pdf"))
+            has_partial = any((f.stem == expected_stem and str(f).endswith('.crdownload')) for f in download_dir.glob("*"))
+            if has_final and not has_partial:
+                return True
+            time.sleep(0.3)
+        return False
+    
     # ===== iframe 안에서 저장 진행 =====
     iframe = wait.until(EC.presence_of_element_located((By.ID, "ireport")))
     driver.switch_to.frame(iframe)
@@ -379,11 +406,112 @@ def download_from_current_page(driver, filename: str = ""):
     select.select_by_value("xlsx")
     time.sleep(0.1)  # 선택 후 대기
 
-    # 최종 다운로드 버튼 클릭
+    # Excel 다운로드 버튼 클릭
     wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="download_main_option_download_button"]'))).click()
+    time.sleep(0.8)  # Excel 다운로드 완료 대기
+
+    # PDF 다운로드를 위해 다시 저장 다이얼로그 열기 시도
+    # 다이얼로그가 닫혔는지 확인 (더 정확한 체크)
+    dialog_open = False
+    try:
+        # select_label 요소가 여전히 존재하고 클릭 가능한지 확인
+        sheet_select = WebDriverWait(driver, 2).until(
+            EC.element_to_be_clickable((By.XPATH, '//*[@id="select_label"]'))
+        )
+        # 다운로드 버튼도 존재하는지 확인
+        download_btn = WebDriverWait(driver, 2).until(
+            EC.element_to_be_clickable((By.XPATH, '//*[@id="download_main_option_download_button"]'))
+        )
+        dialog_open = True
+    except Exception:
+        dialog_open = False
     
-    # 다운로드 완료 대기
-    time.sleep(0.8)
+    if not dialog_open:
+        # 다이얼로그가 닫혔으면 다시 저장 버튼 클릭
+        wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="report_menu_save_button"]'))).click()
+        time.sleep(0.3)  # 저장 버튼 클릭 후 다이얼로그 열릴 때까지 대기
+        
+        # 다이얼로그가 완전히 열릴 때까지 대기
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.XPATH, '//*[@id="report_download_main_option_frame"]'))
+        )
+        time.sleep(0.2)  # 추가 로딩 대기
+        
+        # 파일명 입력 필드 대기 및 재입력
+        filename_input = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.XPATH, '//*[@id="report_download_main_option_frame"]/div/div[2]/input'))
+        )
+        filename_input.clear()
+        time.sleep(0.1)
+        if filename:
+            filename_input.send_keys(filename)
+            time.sleep(0.2)  # 입력 완료 대기
+    
+    # select 요소 가져오기 (클릭 가능할 때까지 대기)
+    sheet_select = WebDriverWait(driver, 10).until(
+        EC.presence_of_element_located((By.XPATH, '//*[@id="select_label"]'))
+    )
+    
+    # select 요소가 보이도록 스크롤
+    try:
+        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", sheet_select)
+        time.sleep(0.2)
+    except Exception:
+        pass
+    
+    # 파일 형식 선택 (pdf) - 여러 방법 시도
+    try:
+        select = Select(sheet_select)
+        select.select_by_value("pdf")
+        time.sleep(0.2)  # 선택 후 대기
+    except Exception:
+        # Select가 실패하면 JavaScript로 직접 선택
+        try:
+            driver.execute_script(
+                "arguments[0].value = 'pdf'; "
+                "var event = new Event('change', { bubbles: true }); "
+                "arguments[0].dispatchEvent(event);",
+                sheet_select
+            )
+            time.sleep(0.2)
+        except Exception as e:
+            print(f"PDF 형식 선택 실패: {e}")
+
+    # PDF 다운로드 버튼 찾기 및 클릭 (여러 방법 시도)
+    download_btn_xpath = '//*[@id="download_main_option_download_button"]'
+    try:
+        download_btn = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.XPATH, download_btn_xpath))
+        )
+        # 버튼이 보이도록 스크롤
+        try:
+            driver.execute_script("arguments[0].scrollIntoView({block:'center'});", download_btn)
+            time.sleep(0.2)
+        except Exception:
+            pass
+        
+        # 일반 클릭 시도
+        try:
+            download_btn.click()
+        except Exception:
+            # JavaScript 클릭 시도
+            try:
+                driver.execute_script("arguments[0].click();", download_btn)
+            except Exception:
+                # 마지막으로 XPath로 직접 클릭
+                wait.until(EC.element_to_be_clickable((By.XPATH, download_btn_xpath))).click()
+    except Exception as e:
+        print(f"PDF 다운로드 버튼 클릭 실패: {e}")
+    
+    # PDF 다운로드 완료 대기
+    if filename:
+        pdf_downloaded = wait_for_pdf_download(filename, appear_timeout=15.0, finish_timeout=90.0)
+        if pdf_downloaded:
+            print(f"  ✅ PDF 다운로드 완료: {filename}")
+        else:
+            print(f"  ⚠️ PDF 다운로드 타임아웃 또는 실패: {filename}")
+    else:
+        time.sleep(1.2)  # 파일명이 없으면 기본 대기
 
     # iframe에서 나오기
     driver.switch_to.default_content()
