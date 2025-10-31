@@ -294,8 +294,41 @@ def load_departs(depart_restrict: list = []):
 
             # 작업 끝나면 닫고 원창 복귀
             driver.close()
-            driver.switch_to.window(next(iter(prev_handles)))
-            wait.until(EC.presence_of_element_located((By.XPATH, tbody_xpath)))
+            # 원래 창으로 안전하게 전환
+            try:
+                current_handles = set(driver.window_handles)
+                # prev_handles 중에서 아직 열려있는 창 찾기
+                valid_handle = None
+                for handle in prev_handles:
+                    if handle in current_handles:
+                        valid_handle = handle
+                        break
+                
+                if valid_handle:
+                    driver.switch_to.window(valid_handle)
+                elif current_handles:
+                    # prev_handles가 모두 닫혔다면 현재 열려있는 창 중 하나로 전환
+                    driver.switch_to.window(list(current_handles)[0])
+                else:
+                    # 모든 창이 닫혔다면 에러
+                    print("  ⚠️ 모든 창이 닫혔습니다.")
+                    break
+            except Exception as e:
+                print(f"  ⚠️ 창 전환 실패: {e}")
+                # 가능한 창으로 전환 시도
+                try:
+                    if driver.window_handles:
+                        driver.switch_to.window(driver.window_handles[0])
+                except Exception:
+                    print("  ⚠️ 복구 불가, 다음 행으로 진행")
+                    i += 1
+                    continue
+            
+            try:
+                wait.until(EC.presence_of_element_located((By.XPATH, tbody_xpath)))
+            except Exception:
+                # tbody를 찾을 수 없어도 다음 행으로 진행
+                pass
 
         else:
             # ==== 같은 탭(전체/부분) 갱신 케이스 ====

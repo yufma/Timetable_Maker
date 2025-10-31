@@ -63,7 +63,13 @@ def extract_subject_data(df: pd.DataFrame, positions: Dict[str, Tuple[int, int]]
     return result_df
 
 
-if __name__ == "__main__":
+def read_subject_excel_rows(excel_dir: str = "subject_excel"):
+    """
+    subject_excel 폴더의 모든 엑셀 파일을 읽어서 JSON 파일로 변환한다.
+    
+    Args:
+        excel_dir: 엑셀 파일이 있는 디렉터리명 (기본값: "subject_excel")
+    """
     # 위치 지정
     positions = {
         "강의명" : (3, 3),
@@ -81,40 +87,44 @@ if __name__ == "__main__":
     }
     
     script_dir = Path(__file__).resolve().parent
-    excel_dir = "subject_excel"
     
     # 모든 엑셀 파일 목록 가져오기
     excel_files = essentials.list_filenames(excel_dir, pattern="*.xlsx")
     
     if not excel_files:
         print("엑셀 파일이 없습니다.")
-    else:
-        print(f"총 {len(excel_files)}개 파일을 처리합니다.\n")
+        return
+    
+    print(f"제한 없음: {len(excel_files)}개 파일을 모두 처리합니다.\n")
+    
+    # subject_json 폴더 생성
+    json_dir = script_dir / "subject_json"
+    json_dir.mkdir(parents=True, exist_ok=True)
+    
+    # 모든 엑셀 파일 순회
+    for filename in excel_files:
+        print(f"처리 중: {filename}")
+        df = read_subject_excel(filename, excel_dir)
         
-        # subject_json 폴더 생성
-        json_dir = script_dir / "subject_json"
-        json_dir.mkdir(parents=True, exist_ok=True)
-        
-        # 모든 엑셀 파일 순회
-        for filename in excel_files:
-            print(f"처리 중: {filename}")
-            df = read_subject_excel(filename, excel_dir)
+        if df is not None:
+            # 데이터 추출
+            result_df = extract_subject_data(df, positions)
             
-            if df is not None:
-                # 데이터 추출
-                result_df = extract_subject_data(df, positions)
-                
-                # JSON 파일로 저장
-                json_filename = Path(filename).stem + ".json"
-                json_path = json_dir / json_filename
-                
-                # DataFrame을 딕셔너리로 변환하여 JSON 저장
-                result_dict = result_df.to_dict(orient="records")[0]
-                with open(json_path, "w", encoding="utf-8") as f:
-                    json.dump(result_dict, f, ensure_ascii=False, indent=2)
-                
-                print(f"  ✓ 저장 완료: {json_filename}\n")
-            else:
-                print(f"  ✗ 읽기 실패: {filename}\n")
-        
-        print(f"모든 파일 처리 완료! ({json_dir})")
+            # JSON 파일로 저장
+            json_filename = Path(filename).stem + ".json"
+            json_path = json_dir / json_filename
+            
+            # DataFrame을 딕셔너리로 변환하여 JSON 저장
+            result_dict = result_df.to_dict(orient="records")[0]
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump(result_dict, f, ensure_ascii=False, indent=2)
+            
+            print(f"  ✓ 저장 완료: {json_filename}\n")
+        else:
+            print(f"  ✗ 읽기 실패: {filename}\n")
+    
+    print(f"모든 파일 처리 완료! ({json_dir})")
+
+
+if __name__ == "__main__":
+    read_subject_excel_rows()
