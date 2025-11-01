@@ -129,7 +129,11 @@ def move_files_by_extension_to_pdf_dir(dir_name: str, base: str = "script", targ
     
     return moved_count
 
-def build_driver(headless: bool = False, download_dir: str | None = None, base: str = "script"):
+def build_driver(headless: bool = None, download_dir: str | None = None, base: str = "script"):
+    # headless가 None이면 전역 설정 사용
+    if headless is None:
+        headless = HEADLESS_MODE
+    
     opts = Options()
     if headless:
         opts.add_argument("--headless=new")
@@ -160,6 +164,9 @@ def build_driver(headless: bool = False, download_dir: str | None = None, base: 
 
     print(f"📂 Chrome download dir = {download_dir if download_dir else '(default)'}")
     return driver
+
+# 드라이버 headless 모드 설정 (True로 설정하면 모든 드라이버가 headless 모드로 실행됨)
+HEADLESS_MODE = True
 
 #아래의 common_semester 변수와 code_semester 변수는 현재 학기에 맞춰 변경할 것
 common_semester = "SU_51001"

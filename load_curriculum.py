@@ -18,7 +18,7 @@ def norm(s: str) -> str:
 
 def load_departs(depart_restrict: list = []):
     
-    driver = essentials.build_driver(False, "depart_excels")
+    driver = essentials.build_driver(download_dir="depart_excels")
     driver.get(essentials.curriculum_url)
 
     # depart_restrict가 비어있으면 모든 학과 처리, 아니면 지정된 학과만 처리

@@ -19,7 +19,7 @@ def load_department_subjects(department_name: str = "인공지능공학과") -> 
     return data
 
 def load_subject_depart(text: str | None = None):
-    driver = essentials.build_driver(False, "subject_excel")
+    driver = essentials.build_driver(download_dir="subject_excel")
     driver.get(essentials.LecPlanHistory_url)
 
     # 지정한 버튼 클릭 → 입력창에 텍스트 입력
@@ -165,7 +165,7 @@ def search_and_visit_result_links(driver, max_rows: int | None = None):
                     break
                 time.sleep(0.2)
 
-            # 페이지 로드 및 iframe 대기
+            # 페이지 로드 및 타입 판정
             if not new_window_opened:
                 # 같은 창에서 갱신된 경우
                 try:
@@ -175,6 +175,64 @@ def search_and_visit_result_links(driver, max_rows: int | None = None):
                 except Exception:
                     pass
 
+            # 페이지 타입 판정: 타입 2인지 확인
+            is_type2 = False
+            try:
+                type2_button_xpath = "/html/body/form/div[3]/div[2]/div[1]/span/input"
+                # 타입 2 요소가 나타날 때까지 대기 (짧은 타임아웃)
+                type2_element = WebDriverWait(driver, 3).until(
+                    EC.presence_of_element_located((By.XPATH, type2_button_xpath))
+                )
+                is_type2 = True
+                print(f"타입 2 페이지 감지: {safe_file_name}")
+            except Exception:
+                # 타입 2가 아니면 정상, 넘어감
+                pass
+
+            # 타입별 처리
+            if is_type2:
+                # 타입 2: 페이지에서 정보 파싱하여 JSON 저장
+                print(f"타입 2 페이지 처리 중: {safe_file_name}")
+                try:
+                    # 페이지 로드 완료 대기
+                    WebDriverWait(driver, 10).until(
+                        lambda d: d.execute_script("return document.readyState") == "complete"
+                    )
+                    time.sleep(0.3)  # 추가 로딩 대기
+                    
+                    # 데이터 파싱 및 저장
+                    parse_type2_page(driver, safe_file_name)
+                    
+                    # 저장 완료 후 이전 페이지로 복귀
+                    if new_window_opened:
+                        driver.close()
+                        driver.switch_to.window(list(prev_handles)[0])
+                    else:
+                        driver.back()
+                        WebDriverWait(driver, 10).until(
+                            EC.presence_of_element_located((By.XPATH, tbody_xpath))
+                        )
+                    time.sleep(0.2)  # 복귀 후 대기
+                except Exception as e:
+                    print(f"타입 2 처리 실패 ({safe_file_name}): {e}")
+                    # 실패해도 이전 페이지로 복귀
+                    if new_window_opened:
+                        try:
+                            driver.close()
+                            driver.switch_to.window(list(prev_handles)[0])
+                        except Exception:
+                            pass
+                    else:
+                        try:
+                            driver.back()
+                            WebDriverWait(driver, 10).until(
+                                EC.presence_of_element_located((By.XPATH, tbody_xpath))
+                            )
+                        except Exception:
+                            pass
+                continue
+
+            # 타입 1: 기존 iframe 처리
             # iframe이 나타날 때까지 대기 (다운로드 페이지 로드 확인)
             try:
                 WebDriverWait(driver, 15).until(
@@ -461,6 +519,56 @@ def download_from_current_page(driver, filename: str = ""):
 
     # iframe에서 나오기
     driver.switch_to.default_content()
+
+
+def parse_type2_page(driver, filename: str) -> bool:
+    """타입 2 페이지에서 정보를 파싱하여 JSON 파일로 저장한다."""
+    script_dir = Path(__file__).resolve().parent
+    json_dir = script_dir / "subject_json"
+    json_dir.mkdir(parents=True, exist_ok=True)
+    
+    # XPath 매핑
+    xpath_mapping = {
+        "강의명": "/html/body/form/div[3]/div[2]/div[2]/table[1]/tbody/tr[1]/td[1]/span",
+        "교수명": "/html/body/form/div[3]/div[2]/div[2]/table[2]/tbody/tr[4]/td[1]/span",
+        "학점": "/html/body/form/div[3]/div[2]/div[2]/table[2]/tbody/tr[3]/td[1]/span[1]",
+        "강의시간": "/html/body/form/div[3]/div[2]/div[2]/table[1]/tbody/tr[3]/td[3]/span",
+        "평가방식": "/html/body/form/div[3]/div[2]/div[2]/table[2]/tbody/tr[2]/td[3]/span",
+        "중간고사": "/html/body/form/div[3]/div[2]/div[2]/table[3]/tbody/tr[14]/td/table/tbody/tr[2]/td[1]/span",
+        "기말고사": "/html/body/form/div[3]/div[2]/div[2]/table[3]/tbody/tr[14]/td/table/tbody/tr[2]/td[2]/span",
+        "출석": "/html/body/form/div[3]/div[2]/div[2]/table[3]/tbody/tr[14]/td/table/tbody/tr[2]/td[3]/span",
+        "과제": "/html/body/form/div[3]/div[2]/div[2]/table[3]/tbody/tr[14]/td/table/tbody/tr[2]/td[4]/span",
+        "퀴즈": "/html/body/form/div[3]/div[2]/div[2]/table[3]/tbody/tr[14]/td/table/tbody/tr[2]/td[5]/span",
+        "토론": "/html/body/form/div[3]/div[2]/div[2]/table[3]/tbody/tr[14]/td/table/tbody/tr[2]/td[6]/span",
+        "기타": "/html/body/form/div[3]/div[2]/div[2]/table[3]/tbody/tr[14]/td/table/tbody/tr[2]/td[7]/span",
+    }
+    
+    # 데이터 추출
+    data = {}
+    wait = WebDriverWait(driver, 10)
+    
+    for key, xpath in xpath_mapping.items():
+        try:
+            element = wait.until(EC.presence_of_element_located((By.XPATH, xpath)))
+            value = (element.text or "").strip()
+            data[key] = value if value else ""
+        except Exception as e:
+            # 요소를 찾지 못하면 빈 문자열
+            data[key] = ""
+            print(f"  경고: {key} 추출 실패 ({xpath})")
+    
+    # JSON 파일로 저장
+    json_filename = f"{filename}.json"
+    json_path = json_dir / json_filename
+    
+    try:
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        print(f"  ✓ 타입 2 JSON 저장 완료: {json_filename}")
+        return True
+    except Exception as e:
+        print(f"  ✗ JSON 저장 실패 ({json_filename}): {e}")
+        return False
 
 
 def can_search_by_course_code(code: str, subjects: List[Dict[str, Any]]) -> bool:

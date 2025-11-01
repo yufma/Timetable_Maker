@@ -18,7 +18,7 @@ def norm(s: str) -> str:
 
 def load_common_curriculums():
     
-    driver = essentials.build_driver(False, "common_subjects_excels")
+    driver = essentials.build_driver(download_dir="common_subjects_excels")
     driver.get(essentials.common_curriculum_url)
 
 

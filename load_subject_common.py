@@ -19,7 +19,7 @@ def load_common_subjects(json_filename: str) -> List[Dict[str, Any]]:
     return data
 
 def load_subject_depart(text: str | None = None):
-    driver = essentials.build_driver(False, "common_subject_excel")
+    driver = essentials.build_driver(download_dir="subject_excel")
     driver.get(essentials.LecPlanHistory_url)
 
     # 지정한 버튼 클릭 → 입력창에 텍스트 입력
@@ -179,11 +179,14 @@ def search_and_visit_result_links(driver, max_rows: int | None = None):
             is_type2 = False
             try:
                 type2_button_xpath = "/html/body/form/div[3]/div[2]/div[1]/span/input"
-                type2_element = driver.find_elements(By.XPATH, type2_button_xpath)
-                if type2_element:
-                    is_type2 = True
-                    print(f"타입 2 페이지 감지: {safe_file_name}")
+                # 타입 2 요소가 나타날 때까지 대기 (짧은 타임아웃)
+                type2_element = WebDriverWait(driver, 3).until(
+                    EC.presence_of_element_located((By.XPATH, type2_button_xpath))
+                )
+                is_type2 = True
+                print(f"타입 2 페이지 감지: {safe_file_name}")
             except Exception:
+                # 타입 2가 아니면 정상, 넘어감
                 pass
 
             # 타입별 처리
@@ -353,7 +356,7 @@ def download_from_current_page(driver, filename: str = ""):
     wait = WebDriverWait(driver, 10)
     
     # 다운로드 완료 대기 헬퍼 (타임아웃 포함)
-    download_dir = Path(essentials._resolve_download_dir("common_subject_excel"))
+    download_dir = Path(essentials._resolve_download_dir("subject_excel"))
 
     def wait_for_pdf_download(expected_stem: str, appear_timeout: float = 15.0, finish_timeout: float = 90.0) -> bool:
         # 1) 다운로드 시작 대기: .crdownload 또는 최종 파일 등장
@@ -520,7 +523,7 @@ def download_from_current_page(driver, filename: str = ""):
 def parse_type2_page(driver, filename: str) -> bool:
     """타입 2 페이지에서 정보를 파싱하여 JSON 파일로 저장한다."""
     script_dir = Path(__file__).resolve().parent
-    json_dir = script_dir / "common_subject_json"
+    json_dir = script_dir / "subject_json"
     json_dir.mkdir(parents=True, exist_ok=True)
     
     # XPath 매핑
