@@ -6,7 +6,7 @@ import json
 
 def read_excel_rows():
     script_dir = Path(__file__).resolve().parent
-    excels = essentials.list_filenames("common_subjects_excels")
+    excels = essentials.list_filenames("common_subjects_excels", pattern="*.xlsx")
     for excel in excels:
         df = pd.read_excel(script_dir / "common_subjects_excels" / excel, engine="calamine", header=None)
         if not df.empty:

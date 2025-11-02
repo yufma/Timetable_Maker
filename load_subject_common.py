@@ -409,6 +409,14 @@ def download_from_current_page(driver, filename: str = ""):
     select.select_by_value("xlsx")
     time.sleep(0.1)  # 선택 후 대기
 
+    wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="download_sub_option_change_button"]'))).click()
+
+    sheet_select = WebDriverWait(driver, 10).until(
+    EC.presence_of_element_located((By.XPATH, '//*[@id="report_download_sub_option_frame"]/div/div[1]/div[1]/select')))
+    select = Select(sheet_select)
+    select.select_by_value("4")
+
+    wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="download_sub_option_save_button"]'))).click()
     # Excel 다운로드 버튼 클릭
     wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="download_main_option_download_button"]'))).click()
     time.sleep(0.8)  # Excel 다운로드 완료 대기

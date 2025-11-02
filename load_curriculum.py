@@ -167,6 +167,7 @@ def load_departs(depart_restrict: list = []):
 
 
             wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="report_menu_save_button"]'))).click()
+            time.sleep(0.2)  # 저장 버튼 클릭 후 다이얼로그 열릴 때까지 대기
             
             filename_input = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located(

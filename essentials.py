@@ -149,6 +149,10 @@ def build_driver(headless: bool = None, download_dir: str | None = None, base: s
         }
         opts.add_experimental_option("prefs", prefs)
         opts.add_argument("--disable-features=DownloadBubble,DownloadBubbleV2")
+    
+    # HTML 파일 자동 저장 방지
+    opts.add_argument("--disable-features=DownloadHats,DownloadHatsErrorDetails")
+    opts.add_argument("--disable-extensions")
 
     driver = webdriver.Chrome(options=opts)
 
