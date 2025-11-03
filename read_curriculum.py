@@ -40,6 +40,36 @@ def read_excel_rows(depart_restrict: list = []):
                     df = df.dropna(subset=["학점"]).copy()
                     df = df[df["학점"].astype(str).str.strip() != ""].reset_index(drop=True)
                 
+                # basic_subjects에 포함된 학수번호 제외
+                if "학수번호" in df.columns:
+                    # basic_subjects 리스트 가져오기 (essentials에서)
+                    basic_subjects = getattr(essentials, "basic_subjects", [])
+                    if basic_subjects:
+                        # 학수번호에서 분반 번호 제거 (예: "MTH1901.001" -> "MTH1901")
+                        def get_course_code_prefix(course_code):
+                            if pd.isna(course_code):
+                                return None
+                            course_str = str(course_code).strip()
+                            # 점(.)으로 분리하여 앞부분만 추출
+                            if "." in course_str:
+                                return course_str.split(".")[0]
+                            return course_str
+                        
+                        # 학수번호 접두사 추출
+                        df["학수번호_접두사"] = df["학수번호"].apply(get_course_code_prefix)
+                        
+                        # basic_subjects에 포함되지 않은 행만 유지
+                        before_count = len(df)
+                        df = df[~df["학수번호_접두사"].isin(basic_subjects)].copy()
+                        after_count = len(df)
+                        
+                        # 학수번호_접두사 컬럼 제거
+                        df = df.drop(columns=["학수번호_접두사"], errors="ignore")
+                        
+                        if before_count != after_count:
+                            excluded_count = before_count - after_count
+                            print(f"  ⏭️  {excluded_count}개 항목 제외 (basic_subjects)")
+                
                 # 결과 저장: depart_json/{엑셀파일명}.json
                 out_path = json_dir / f"{Path(excel).stem}.json"
                 with open(out_path, "w", encoding="utf-8") as f:

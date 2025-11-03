@@ -22,8 +22,9 @@ read_common_curriculums.read_excel_rows()
 load_subject.run_subject_searches_from_data(essentials.departs_restrict)
 
 load_subject_common.run_subject_searches_from_data()
-essentials.move_files_by_extension_to_pdf_dir("subject_excel")
 """
+essentials.move_files_by_extension_to_pdf_dir("subject_excel")
+
 read_subject.read_subject_excel_rows()
 
 
