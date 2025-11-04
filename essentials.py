@@ -184,8 +184,8 @@ LecPlanHistory_url = "https://sugang.inha.ac.kr/STD/SU_65002/LecPlanHistory.aspx
 departs_restrict = ["인공지능공학과"]
 
 
-#개별 강의계획서에 나와있지 않거나 제외할 항목 (일부 전공기초, 기초교양, 중점교양) 주의 : 물1 물2 물실1 물실2 화1 화2 화실1 화실2 유무는 매 학기마다 다름
-basic_subjects= ["MTH1901", "MTH1902", "GEE3013", "GEE2016", "GEE2015","PHY1901", "PHY1902","	PHY1904","CHM1922", "CHM1929", "GEB1107", "GEB1108", "GEB1109","GEB1117","GEB1126","GEB1143","GEB1151","GEB1112","GEB1113","GEB1114","GED6009"]
+#개별 강의계획서에 나와있지 않거나 제외할 항목
+basic_subjects= ["MTH1901", "MTH1902", "GEE3013", "GEE2016", "GEE2015","PHY1901", "PHY1902","PHY1903","PHY1904","CHM1921", "CHM1922", "CHM1928","CHM1929", "GEB1107", "GEB1108", "GEB1109","GEB1117","GEB1126","GEB1143","GEB1151","GEB1112","GEB1113","GEB1114","GED6009"]
 
 
 if __name__ == "__main__":

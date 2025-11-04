@@ -541,6 +541,7 @@ def parse_type2_page(driver, filename: str) -> bool:
         "교수명": "/html/body/form/div[3]/div[2]/div[2]/table[2]/tbody/tr[4]/td[1]/span",
         "학점": "/html/body/form/div[3]/div[2]/div[2]/table[2]/tbody/tr[3]/td[1]/span[1]",
         "강의시간": "/html/body/form/div[3]/div[2]/div[2]/table[1]/tbody/tr[3]/td[3]/span",
+        "강의실": "/html/body/form/div[3]/div[2]/div[2]/table[2]/tbody/tr[4]/td[3]/span",
         "평가방식": "/html/body/form/div[3]/div[2]/div[2]/table[2]/tbody/tr[2]/td[3]/span",
         "중간고사": "/html/body/form/div[3]/div[2]/div[2]/table[3]/tbody/tr[14]/td/table/tbody/tr[2]/td[1]/span",
         "기말고사": "/html/body/form/div[3]/div[2]/div[2]/table[3]/tbody/tr[14]/td/table/tbody/tr[2]/td[2]/span",
@@ -555,15 +556,95 @@ def parse_type2_page(driver, filename: str) -> bool:
     data = {}
     wait = WebDriverWait(driver, 10)
     
+    # 평가 항목 키워드 목록
+    evaluation_keywords = ["중간고사", "기말고사", "출석", "과제", "퀴즈", "토론", "기타"]
+    
     for key, xpath in xpath_mapping.items():
         try:
             element = wait.until(EC.presence_of_element_located((By.XPATH, xpath)))
             value = (element.text or "").strip()
-            data[key] = value if value else ""
+            
+            # 학점 처리: "3학점 (이론:3 , 설계:0 , 실험/실습:0)" 형태에서 숫자만 추출
+            if key == "학점":
+                if value:
+                    # "3학점" 패턴에서 숫자 추출
+                    match = re.search(r'(\d+\.?\d*)', value)
+                    if match:
+                        data[key] = match.group(1)
+                    else:
+                        data[key] = ""
+                else:
+                    data[key] = ""
+            # 평가 비율 처리: 숫자만 있으면 "% " 추가
+            elif key in evaluation_keywords:
+                if value:
+                    # 이미 %가 포함되어 있으면 그대로 사용
+                    if '%' in value:
+                        data[key] = value
+                    else:
+                        # 숫자만 있으면 "% " 추가
+                        match = re.search(r'(\d+\.?\d*)', value)
+                        if match:
+                            num_value = match.group(1)
+                            if float(num_value) == 0:
+                                data[key] = "0 %"
+                            else:
+                                data[key] = f"{num_value} %"
+                        else:
+                            data[key] = "0 %"
+                else:
+                    data[key] = "0 %"
+            else:
+                data[key] = value if value else ""
         except Exception as e:
-            # 요소를 찾지 못하면 빈 문자열
-            data[key] = ""
+            # 요소를 찾지 못하면 빈 문자열 (평가 항목은 "0 %")
+            if key in evaluation_keywords:
+                data[key] = "0 %"
+            else:
+                data[key] = ""
             print(f"  경고: {key} 추출 실패 ({xpath})")
+    
+    # 강의시간 형식 변환 (타입 1 형식으로)
+    강의실 = data.get("강의실", "").strip()
+    강의시간 = data.get("강의시간", "").strip()
+    
+    if 강의시간:
+        # 타입 2 형식: "월 1,월 2,월 3,수 1,수 2,수 3" -> 타입 1 형식: "강의실:월1,2,3,수1,2,3"
+        # 요일별로 그룹화
+        from collections import defaultdict
+        요일별_시간 = defaultdict(list)
+        
+        # "월 1,월 2,월 3,수 1,수 2,수 3" 형식을 파싱
+        parts = 강의시간.split(",")
+        for part in parts:
+            part = part.strip()
+            if part:
+                # 요일과 시간 분리 (예: "월 1" -> "월", "1")
+                match = re.match(r'([월화수목금토일])\s*(\d+)', part)
+                if match:
+                    요일 = match.group(1)
+                    시간 = match.group(2)
+                    요일별_시간[요일].append(시간)
+        
+        # 타입 1 형식으로 변환: "월1,2,3,수1,2,3"
+        if 요일별_시간:
+            변환된_시간 = []
+            for 요일 in ["월", "화", "수", "목", "금", "토", "일"]:
+                if 요일 in 요일별_시간:
+                    시간들 = ",".join(요일별_시간[요일])
+                    변환된_시간.append(f"{요일}{시간들}")
+            
+            if 변환된_시간:
+                최종_강의시간 = ",".join(변환된_시간)
+                # 강의실 정보가 있으면 앞에 붙이기
+                if 강의실:
+                    data["강의시간"] = f"{강의실}:{최종_강의시간}"
+                else:
+                    data["강의시간"] = 최종_강의시간
+    
+    # 강의실 키는 제거 (최종 결과에는 강의시간에 포함됨)
+    if "강의실" in data:
+        del data["강의실"]
     
     # JSON 파일로 저장
     json_filename = f"{filename}.json"

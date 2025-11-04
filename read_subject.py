@@ -179,8 +179,6 @@ def extract_subject_data(df: pd.DataFrame) -> pd.DataFrame:
             result_data["학점"] = 학점_match.group(1)
         else:
             result_data["학점"] = ""
-    else:
-        result_data["학점"] = ""
     
     # 강의시간: "강의시간표" 키워드 찾고 같은 행에서 다음 셀 추출
     강의시간 = extract_value_after_keyword(df, "강의시간표")

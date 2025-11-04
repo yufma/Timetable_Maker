@@ -125,6 +125,16 @@ def load_common_curriculums():
             wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="report_menu_save_button"]'))).click()
             time.sleep(0.2)  # 저장 버튼 클릭 후 다이얼로그 열릴 때까지 대기
             
+            # 다이얼로그가 완전히 열릴 때까지 대기 (타임아웃 발생 시에도 계속 진행)
+            try:
+                WebDriverWait(driver, 5).until(
+                    EC.presence_of_element_located((By.XPATH, '//*[@id="report_download_main_option_frame"]'))
+                )
+                time.sleep(0.2)  # 추가 로딩 대기
+            except Exception:
+                # 프레임 대기 실패해도 계속 진행 (입력 필드가 이미 존재할 수 있음)
+                time.sleep(0.3)  # 추가 대기 시간
+            
             filename_input = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located(
                 (By.XPATH, '//*[@id="report_download_main_option_frame"]/div/div[2]/input')
