@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+{% block title %}요약 보기 | Timetable Recommender{% endblock %}
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-8">
+    <div class="mb-4">
+        <a href="#" id="back-link" class="text-blue-600 hover:text-blue-800" onclick="history.back(); return false;">&larr; 목록으로</a>
+    </div>
+    
+    <div id="summary-content" class="bg-white rounded-xl border p-8">
+        <div class="text-center py-8">
+            <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-black"></div>
+            <p class="mt-4 text-gray-600">로딩 중...</p>
+        </div>
+    </div>
+</div>
+
+<script>
+// URL에서 코드 추출
+const urlParams = new URLSearchParams(window.location.search);
+const subjectCode = urlParams.get('code');
+
+// 강의 시간과 강의실 파싱 함수
+function parseScheduleTime(timeStr) {
+    if (!timeStr) return '';
+    
+    // 형식: "5S332:월17,18,19,20,60주년-906:화17,18,19,20"
+    // 또는 "5S332:월10,11,12,수10,11,12"
+    // 또는 "60주년-906:화7,8,9,10,목10,11,12,13"
+    
+    const scheduleItems = [];
+    
+    // 콤마로 분리 후 각 부분 처리
+    const rawParts = timeStr.split(',');
+    let currentClassroom = '';
+    let currentDay = '';
+    const currentTimes = [];
+    
+    for (let part of rawParts) {
+        part = part.trim();
+        if (!part) continue;
+        
+        // 콜론이 있는 경우: 새로운 강의실 시작
+        if (part.includes(':')) {
+            // 이전 데이터 저장
+            if (currentDay && currentTimes.length > 0) {
+                scheduleItems.push({
+                    day: currentDay,
+                    classroom: currentClassroom,
+                    times: [...currentTimes].join(',')
+                });
+            }
+            
+            // 새 강의실과 첫 요일/시간 파싱
+            const [classroom, timeInfo] = part.split(':').map(s => s.trim());
+            currentClassroom = classroom;
+            currentTimes.length = 0;
+            
+            // 시간 정보에서 요일 추출
+            const dayMatch = timeInfo.match(/^([월화수목금토일])(.+)/);
+            if (dayMatch) {
+                currentDay = dayMatch[1];
+                const timePart = dayMatch[2];
+                if (timePart) {
+                    currentTimes.push(timePart);
+                }
+            } else {
+                currentDay = '';
+            }
+        } else {
+            // 요일로 시작하는지 확인
+            if (part.match(/^[월화수목금토일]/)) {
+                // 이전 요일 데이터 저장
+                if (currentDay && currentTimes.length > 0) {
+                    scheduleItems.push({
+                        day: currentDay,
+                        classroom: currentClassroom,
+                        times: [...currentTimes].join(',')
+                    });
+                }
+                
+                // 새 요일 시작
+                const dayMatch = part.match(/^([월화수목금토일])(.+)/);
+                if (dayMatch) {
+                    currentDay = dayMatch[1];
+                    const timePart = dayMatch[2];
+                    currentTimes.length = 0;
+                    if (timePart) {
+                        currentTimes.push(timePart);
+                    }
+                }
+            } else {
+                // 시간 추가
+                currentTimes.push(part);
+            }
+        }
+    }
+    
+    // 마지막 요일 데이터 저장
+    if (currentDay && currentTimes.length > 0) {
+        scheduleItems.push({
+            day: currentDay,
+            classroom: currentClassroom,
+            times: currentTimes.join(',')
+        });
+    }
+    
+    if (scheduleItems.length === 0) return timeStr;
+    
+    // HTML로 변환
+    return scheduleItems.map(item => {
+        let html = `<div class="flex items-start gap-3 mb-2 p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors">`;
+        html += `<span class="font-bold text-blue-600 min-w-[40px] text-center">${item.day}</span>`;
+        html += `<div class="flex-1">`;
+        if (item.classroom) {
+            html += `<div class="text-sm text-gray-600 mb-1">`;
+            html += `<span class="font-semibold">강의실:</span> <span class="text-gray-800">${item.classroom}</span>`;
+            html += `</div>`;
+        }
+        html += `<div class="text-sm text-gray-800 font-mono">${item.times}</div>`;
+        html += `</div>`;
+        html += `</div>`;
+        return html;
+    }).join('');
+}
+
+if (subjectCode) {
+    // 요약본 로드
+    const baseCode = subjectCode.split('.')[0];
+    fetch(`/exports/subjects/${baseCode}.html`)
+        .then(response => response.text())
+        .then(html => {
+            const contentDiv = document.getElementById('summary-content');
+            // HTML을 정리하여 표시
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            const container = doc.querySelector('.container');
+            if (container) {
+                // "목록으로" 링크 제거
+                const backLink = container.querySelector('a');
+                if (backLink && backLink.textContent.includes('목록')) {
+                    backLink.remove();
+                }
+                
+                // 강의계획서 버튼 찾기 및 아래 내용 제거
+                const pdfButtons = container.querySelectorAll('a, button');
+                pdfButtons.forEach(btn => {
+                    const text = btn.textContent || btn.innerText || '';
+                    if (text.includes('강의계획서') || text.includes('PDF')) {
+                        // 다음 형제 요소들 제거 (강의계획서 버튼 아래 모든 내용)
+                        let nextSibling = btn.nextSibling;
+                        while (nextSibling) {
+                            const toRemove = nextSibling;
+                            nextSibling = nextSibling.nextSibling;
+                            toRemove.remove();
+                        }
+                        // 부모 요소가 있고, 부모가 div나 p 같은 경우, 부모의 다음 형제도 제거
+                        if (btn.parentElement) {
+                            let parentNext = btn.parentElement.nextSibling;
+                            while (parentNext) {
+                                const toRemove = parentNext;
+                                parentNext = parentNext.nextSibling;
+                                toRemove.remove();
+                            }
+                        }
+                    }
+                });
+                
+                // 강의시간 데이터 파싱 및 렌더링
+                const table = container.querySelector('.table');
+                if (table) {
+                    const rows = table.querySelectorAll('tr');
+                    rows.forEach(row => {
+                        const th = row.querySelector('th');
+                        if (th && th.textContent.includes('강의시간')) {
+                            const td = row.querySelector('td');
+                            if (td) {
+                                const timeStr = td.textContent;
+                                const parsed = parseScheduleTime(timeStr);
+                                if (parsed) {
+                                    td.innerHTML = parsed;
+                                }
+                            }
+                        }
+                    });
+                }
+                
+                contentDiv.innerHTML = container.innerHTML;
+                
+                // 스타일 개선을 위한 추가 처리
+                const style = document.createElement('style');
+                style.textContent = `
+                    #summary-content h1 { font-size: 1.875rem; font-weight: 700; margin-bottom: 1rem; color: #111827; }
+                    #summary-content h1 small { font-size: 1rem; color: #6b7280; }
+                    #summary-content .table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+                    #summary-content .table th { background: #f9fafb; padding: 1rem; text-align: left; font-weight: 600; color: #374151; width: 140px; }
+                    #summary-content .table td { padding: 1rem; border-top: 1px solid #e5e7eb; color: #4b5563; }
+                    #summary-content .table tr:hover td { background: #f9fafb; }
+                `;
+                document.head.appendChild(style);
+            } else {
+                contentDiv.innerHTML = '<div class="text-center text-gray-500 py-8">요약본을 찾을 수 없습니다.</div>';
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            document.getElementById('summary-content').innerHTML = '<div class="text-center text-gray-500 py-8">요약본을 불러오는 중 오류가 발생했습니다.</div>';
+        });
+} else {
+    document.getElementById('summary-content').innerHTML = '<div class="text-center text-gray-500 py-8">강의 코드가 제공되지 않았습니다.</div>';
+}
+</script>
+{% endblock %}
+

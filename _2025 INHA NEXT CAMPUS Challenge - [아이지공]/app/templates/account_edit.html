@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}회원 정보 수정 | Timetable Recommender{% endblock %}
+
+{% block content %}
+<div class="max-w-xl mx-auto space-y-6">
+  <h1 class="text-2xl font-bold">회원 정보 수정</h1>
+
+  {% if msg %}
+    <div class="rounded-lg border border-green-200 bg-green-50 p-3 text-green-800 text-sm">{{ msg }}</div>
+  {% endif %}
+  {% if err %}
+    <div class="rounded-lg border border-red-200 bg-red-50 p-3 text-red-700 text-sm">{{ err }}</div>
+  {% endif %}
+
+  <form method="post" action="/me/edit" class="space-y-4">
+    <!-- 학번(읽기전용) -->
+    <div>
+      <label class="block text-sm font-medium">학번</label>
+      <input type="text" value="{{ user.student_id }}" class="mt-1 w-full rounded-lg border p-2 bg-gray-100" readonly />
+    </div>
+
+    <!-- 이름 -->
+    <div>
+      <label class="block text-sm font-medium">이름</label>
+      <input type="text" name="name" value="{{ user.name }}" class="mt-1 w-full rounded-lg border p-2" required />
+    </div>
+
+    <hr class="my-4"/>
+
+    <!-- 단과대 선택 -->
+    <div>
+      <label class="block text-sm font-medium">단과대</label>
+      <select id="faculty" name="faculty" class="mt-1 w-full rounded-lg border p-2" required>
+        <option value="" disabled {{ 'selected' if not faculty }}>단과대를 선택하세요</option>
+        {% for f in FACULTIES.keys() %}
+          <option value="{{ f }}" {{ 'selected' if faculty == f }}>{{ f }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- 전공 선택 -->
+    <div>
+      <label class="block text-sm font-medium">전공</label>
+      <select id="major" name="major" class="mt-1 w-full rounded-lg border p-2" required>
+        <option value="" disabled>전공을 선택하세요</option>
+        {% if faculty in FACULTIES %}
+          {% for m in FACULTIES[faculty] %}
+            <option value="{{ m }}" {{ 'selected' if user.major == m }}>{{ m }}</option>
+          {% endfor %}
+        {% endif %}
+      </select>
+    </div>
+
+    <!-- 현재 비밀번호 -->
+    <div>
+      <label class="block text-sm font-medium">현재 비밀번호 확인</label>
+      <input type="password" name="current_password" class="mt-1 w-full rounded-lg border p-2" placeholder="현재 비밀번호를 입력하세요" required />
+    </div>
+
+    <!-- 새 비밀번호 -->
+    <div>
+      <label class="block text-sm font-medium">새 비밀번호 (선택)</label>
+      <input type="password" name="new_password" class="mt-1 w-full rounded-lg border p-2" placeholder="변경하지 않으려면 비워두세요" />
+    </div>
+
+    <div class="flex gap-3">
+      <a href="/me" class="flex-1 text-center rounded-lg border py-2">취소</a>
+      <button type="submit" class="flex-1 rounded-lg bg-blue-600 text-white py-2">저장</button>
+    </div>
+  </form>
+</div>
+
+<script>
+  const FACULTIES = {{ FACULTIES | tojson }};
+  const facultySelect = document.getElementById('faculty');
+  const majorSelect = document.getElementById('major');
+
+  function fillMajors(faculty, selected=null) {
+    while (majorSelect.options.length) majorSelect.remove(0);
+    const ph = document.createElement('option');
+    ph.textContent = '전공을 선택하세요';
+    ph.value = '';
+    ph.disabled = true;
+    ph.selected = true;
+    majorSelect.add(ph);
+
+    if (!faculty || !FACULTIES[faculty]) return;
+
+    FACULTIES[faculty].forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m;
+      opt.textContent = m;
+      if (selected && selected === m) opt.selected = true;
+      majorSelect.add(opt);
+    });
+  }
+
+  facultySelect.addEventListener('change', () => fillMajors(facultySelect.value, null));
+
+  (function bootstrap() {
+    const initialFaculty = "{{ faculty or '' }}";
+    const initialMajor = "{{ user.major or '' }}";
+    if (initialFaculty) fillMajors(initialFaculty, initialMajor);
+  })();
+</script>
+{% endblock %}
+

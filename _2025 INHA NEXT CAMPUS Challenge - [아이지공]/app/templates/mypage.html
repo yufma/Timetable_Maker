@@ -1,0 +1,296 @@
+{% extends "base.html" %}
+{% block title %}마이페이지 | Timetable Recommender{% endblock %}
+
+{% block content %}
+<div class="max-w-xl mx-auto space-y-6">
+  <h1 class="text-2xl font-bold">마이페이지</h1>
+
+  {% if msg %}
+    <div class="rounded-lg border border-green-200 bg-green-50 p-3 text-green-800 text-sm">{{ msg }}</div>
+  {% endif %}
+  {% if err %}
+    <div class="rounded-lg border border-red-200 bg-red-50 p-3 text-red-700 text-sm">{{ err }}</div>
+  {% endif %}
+
+  <!-- 읽기 전용 프로필 카드 -->
+  <div class="rounded-xl border p-4 space-y-2 bg-white/50">
+    <div class="text-sm text-gray-500">학번</div>
+    <div class="font-medium">{{ user.student_id }}</div>
+
+    <div class="text-sm text-gray-500 mt-3">이름</div>
+    <div class="font-medium">{{ user.name }}</div>
+
+    <div class="text-sm text-gray-500 mt-3">전공</div>
+    <div class="font-medium">{{ user.major or '미설정' }}</div>
+  </div>
+
+  <div class="space-y-3">
+    <!-- 찜목록 페이지 이동 -->
+    <a href="/favorites"
+      class="mt-3 inline-block w-full text-center bg-pink-500 text-white py-2 rounded-lg hover:bg-pink-600">
+      찜목록 관리
+    </a>
+
+    <a href="/me/edit" class="w-full inline-block text-center rounded-lg bg-blue-600 text-white py-2">
+      회원 정보 수정
+    </a>
+  </div>
+</div>
+
+<hr class="my-8"/>
+
+<!-- 수강내역 관리 섹션 -->
+<div class="max-w-xl mx-auto mb-8">
+  <h2 class="text-xl font-bold mb-4">📚 수강내역 관리</h2>
+  <p class="text-sm text-gray-600 mb-4">
+    성적표 PDF를 업로드하면 자동으로 수강내역을 분석하여 저장합니다.
+  </p>
+
+  <div id="transcript-section" class="space-y-4">
+    <!-- 로딩 중 -->
+    <div id="loading-indicator" class="text-center py-4 text-gray-500">
+      불러오는 중...
+    </div>
+
+    <!-- 업로드 폼 (성적표가 없을 때) -->
+    <div id="upload-form" class="hidden">
+      <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+        <input type="file" id="transcript-file" accept=".pdf" class="hidden">
+        <label for="transcript-file" class="cursor-pointer">
+          <div class="text-4xl mb-2">📄</div>
+          <p class="text-sm text-gray-600 mb-2">성적표 PDF 파일을 업로드하세요</p>
+          <button type="button" onclick="document.getElementById('transcript-file').click()" 
+                  class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+            파일 선택
+          </button>
+        </label>
+      </div>
+      <p class="text-xs text-gray-500 mt-2">※ PDF 파일만 업로드 가능합니다.</p>
+    </div>
+
+    <!-- 성적표 정보 (업로드 후) -->
+    <div id="transcript-info" class="hidden">
+      <div class="bg-white border rounded-lg p-4 space-y-3">
+        <div class="flex justify-between items-start">
+          <div>
+            <h3 class="font-semibold text-lg mb-2">업로드된 성적표</h3>
+            <p class="text-sm text-gray-600" id="transcript-filename">-</p>
+            <p class="text-sm text-gray-600" id="transcript-upload-date">-</p>
+          </div>
+          <button onclick="deleteTranscript()" class="px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700">
+            삭제
+          </button>
+        </div>
+        
+        <hr>
+        
+        <div class="grid grid-cols-2 gap-4">
+          <div class="bg-purple-50 rounded p-3">
+            <p class="text-xs text-gray-600 mb-1">전공학점</p>
+            <p class="text-2xl font-bold text-purple-600" id="transcript-major-credits">0/65</p>
+          </div>
+          <div class="bg-blue-50 rounded p-3">
+            <p class="text-xs text-gray-600 mb-1">전체학점</p>
+            <p class="text-2xl font-bold text-blue-600" id="transcript-total-credits">0/130</p>
+          </div>
+        </div>
+        
+        <div>
+          <button onclick="toggleCourseList()" class="text-sm text-blue-600 hover:underline">
+            <span id="course-list-toggle">▶ 수강 과목 보기</span> (<span id="course-count">0</span>개)
+          </button>
+          <div id="course-list" class="hidden mt-3 max-h-60 overflow-y-auto">
+            <table class="w-full text-xs">
+              <thead class="bg-gray-100 sticky top-0">
+                <tr>
+                  <th class="px-2 py-1 text-left">학기</th>
+                  <th class="px-2 py-1 text-left">학수번호</th>
+                  <th class="px-2 py-1 text-left">과목명</th>
+                  <th class="px-2 py-1 text-center">학점</th>
+                  <th class="px-2 py-1 text-center">성적</th>
+                </tr>
+              </thead>
+              <tbody id="course-list-body">
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<hr class="my-8"/>
+
+<div class="max-w-xl mx-auto">
+  <h2 class="text-lg font-bold text-red-600">회원 탈퇴</h2>
+  <p class="text-sm text-gray-600 mb-3">
+    회원탈퇴를 진행하면 계정과 연관된 데이터가 삭제되며, 복구되지 않습니다.
+  </p>
+
+  <form method="post" action="/me/delete" class="space-y-3"
+        onsubmit="return confirm('정말 탈퇴하시겠어요? 이 작업은 되돌릴 수 없습니다.');">
+    <div>
+      <label class="block text-sm font-medium">현재 비밀번호</label>
+      <input type="password" name="delete_password" class="mt-1 w-full rounded-lg border p-2" required />
+    </div>
+    <button type="submit" class="w-full rounded-lg bg-red-600 text-white py-2">
+      회원탈퇴
+    </button>
+  </form>
+</div>
+
+<script>
+// 성적표 관련 JavaScript
+let currentTranscript = null;
+
+// 페이지 로드 시 성적표 조회
+window.addEventListener('DOMContentLoaded', loadTranscript);
+
+async function loadTranscript() {
+  try {
+    const response = await fetch('/api/transcript');
+    const result = await response.json();
+    
+    document.getElementById('loading-indicator').classList.add('hidden');
+    
+    if (result.success && result.data) {
+      currentTranscript = result.data;
+      showTranscriptInfo(result.data);
+    } else {
+      showUploadForm();
+    }
+  } catch (error) {
+    console.error('성적표 조회 오류:', error);
+    document.getElementById('loading-indicator').classList.add('hidden');
+    showUploadForm();
+  }
+}
+
+function showUploadForm() {
+  document.getElementById('upload-form').classList.remove('hidden');
+  document.getElementById('transcript-info').classList.add('hidden');
+}
+
+function showTranscriptInfo(data) {
+  document.getElementById('upload-form').classList.add('hidden');
+  document.getElementById('transcript-info').classList.remove('hidden');
+  
+  document.getElementById('transcript-filename').textContent = data.filename || '-';
+  document.getElementById('transcript-upload-date').textContent = 
+    data.upload_date ? `업로드: ${new Date(data.upload_date).toLocaleDateString('ko-KR')}` : '-';
+  
+  // 전공학점 표시 (전공필수 + 전공선택 / 65)
+  const majorCredits = data.major_credits || 0;
+  document.getElementById('transcript-major-credits').textContent = `${majorCredits}/65`;
+  
+  // 전체학점 표시 (전체 / 130)
+  const totalCredits = data.total_credits || 0;
+  document.getElementById('transcript-total-credits').textContent = `${totalCredits}/130`;
+  
+  document.getElementById('course-count').textContent = data.courses ? data.courses.length : 0;
+  
+  // 과목 리스트 생성
+  const courseListBody = document.getElementById('course-list-body');
+  courseListBody.innerHTML = '';
+  if (data.courses && data.courses.length > 0) {
+    data.courses.forEach(course => {
+      const row = document.createElement('tr');
+      row.className = 'border-b hover:bg-gray-50';
+      row.innerHTML = `
+        <td class="px-2 py-2">${course.year}-${course.semester}</td>
+        <td class="px-2 py-2">${course.course_code}</td>
+        <td class="px-2 py-2">${course.course_name}</td>
+        <td class="px-2 py-2 text-center">${course.credit}</td>
+        <td class="px-2 py-2 text-center font-semibold">${course.grade}</td>
+      `;
+      courseListBody.appendChild(row);
+    });
+  }
+}
+
+function toggleCourseList() {
+  const courseList = document.getElementById('course-list');
+  const toggle = document.getElementById('course-list-toggle');
+  if (courseList.classList.contains('hidden')) {
+    courseList.classList.remove('hidden');
+    toggle.textContent = '▼ 수강 과목 숨기기';
+  } else {
+    courseList.classList.add('hidden');
+    toggle.textContent = '▶ 수강 과목 보기';
+  }
+}
+
+// 파일 선택 시 자동 업로드
+document.getElementById('transcript-file').addEventListener('change', async function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  if (!file.name.toLowerCase().endsWith('.pdf')) {
+    alert('PDF 파일만 업로드 가능합니다.');
+    return;
+  }
+  
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  // 업로드 중 표시
+  document.getElementById('upload-form').innerHTML = `
+    <div class="text-center py-8">
+      <div class="text-4xl mb-2">⏳</div>
+      <p class="text-sm text-gray-600">업로드 중...</p>
+      <p class="text-xs text-gray-500 mt-2">PDF를 분석하고 있습니다. 잠시만 기다려주세요.</p>
+    </div>
+  `;
+  
+  try {
+    const response = await fetch('/api/transcript/upload', {
+      method: 'POST',
+      body: formData
+    });
+    
+    const result = await response.json();
+    
+    if (result.success) {
+      alert(result.message);
+      await loadTranscript();
+    } else {
+      alert(result.message || '업로드에 실패했습니다.');
+      showUploadForm();
+      e.target.value = ''; // 파일 입력 초기화
+    }
+  } catch (error) {
+    console.error('업로드 오류:', error);
+    alert('업로드 중 오류가 발생했습니다.');
+    showUploadForm();
+    e.target.value = ''; // 파일 입력 초기화
+  }
+});
+
+async function deleteTranscript() {
+  if (!confirm('성적표를 삭제하시겠습니까?\n모든 수강내역 정보가 삭제됩니다.')) {
+    return;
+  }
+  
+  try {
+    const response = await fetch('/api/transcript', {
+      method: 'DELETE'
+    });
+    
+    const result = await response.json();
+    
+    if (result.success) {
+      alert(result.message);
+      currentTranscript = null;
+      showUploadForm();
+    } else {
+      alert(result.message || '삭제에 실패했습니다.');
+    }
+  } catch (error) {
+    console.error('삭제 오류:', error);
+    alert('삭제 중 오류가 발생했습니다.');
+  }
+}
+</script>
+
+{% endblock %}

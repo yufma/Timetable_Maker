@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+{% block title %}찜 목록 | Timetable Recommender{% endblock %}
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 py-8">
+    <div class="mb-6 flex justify-between items-start">
+        <div>
+            <h1 class="text-3xl font-bold mb-2">찜 목록</h1>
+            <p class="text-gray-600">관심 있는 강의, 교수님, 시간표를 저장하고 관리하세요</p>
+        </div>
+        <a href="/lecture-search" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
+            <span>🔍</span>
+            <span>강의 검색</span>
+        </a>
+    </div>
+
+    <!-- 탭 네비게이션 -->
+    <div class="mb-6 border-b">
+        <div class="flex gap-4">
+            <button onclick="showTab('lectures')" id="tab-lectures" class="px-4 py-2 font-semibold border-b-2 border-black text-black">찜한 강의</button>
+            <button onclick="showTab('professors')" id="tab-professors" class="px-4 py-2 font-semibold border-b-2 border-transparent text-gray-500 hover:text-black">찜한 교수님</button>
+            <button onclick="showTab('schedules')" id="tab-schedules" class="px-4 py-2 font-semibold border-b-2 border-transparent text-gray-500 hover:text-black">찜한 시간표</button>
+        </div>
+    </div>
+
+    <!-- 찜한 강의 탭 -->
+    <div id="content-lectures" class="tab-content">
+        <div class="bg-white rounded-xl border p-6">
+            {% if favorite_lectures and favorite_lectures|length > 0 %}
+                <div class="space-y-4">
+                    {% for fav in favorite_lectures %}
+                        <div class="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                            <div class="flex justify-between items-center">
+                                <div class="flex-1">
+                                    <div class="flex items-center gap-3 mb-2">
+                                        <span class="px-3 py-1 bg-gray-100 rounded text-sm font-mono">{{ fav.subject_code }}</span>
+                                        {% if fav.display_name %}
+                                            <span class="text-lg font-semibold">{{ fav.display_name }}</span>
+                                        {% endif %}
+                                    </div>
+                                    <p class="text-sm text-gray-600 mt-2">찜한 날짜: {{ fav.created_at or "알 수 없음" }}</p>
+                                </div>
+                                <div class="flex gap-2">
+                                    <a href="/lecture-search/view-summary?code={{ fav.subject_code }}" class="px-3 py-2 bg-gray-600 text-white rounded text-sm hover:bg-gray-700">상세보기</a>
+                                    <button onclick="removeFavorite('lecture', {{ fav.id }}, '{{ fav.subject_code }}')" class="px-3 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-700">삭제</button>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="text-center text-gray-500 py-12">
+                    <p class="text-lg mb-2">아직 찜한 강의가 없습니다.</p>
+                    <p class="text-sm mb-4">강의 검색 페이지에서 강의를 찜해보세요.</p>
+                    <a href="/lecture-search" class="inline-block px-5 py-2 rounded-xl bg-black text-white hover:bg-gray-800">강의 검색하기</a>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 찜한 교수님 탭 -->
+    <div id="content-professors" class="tab-content hidden">
+        <div class="bg-white rounded-xl border p-6">
+            {% if favorite_professors and favorite_professors|length > 0 %}
+                <div class="space-y-4">
+                    {% for fav in favorite_professors %}
+                        <div class="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                            <div class="flex justify-between items-center">
+                                <div class="flex-1">
+                                    <h3 class="text-lg font-semibold">{{ fav.professor_name }}</h3>
+                                    <p class="text-sm text-gray-600 mt-1">찜한 날짜: {{ fav.created_at or "알 수 없음" }}</p>
+                                </div>
+                                <div class="flex gap-2">
+                                    <a href="/lecture-search?professor={{ fav.professor_name|urlencode }}" class="px-3 py-2 bg-gray-600 text-white rounded text-sm hover:bg-gray-700">강의 검색</a>
+                                    <button onclick="removeFavorite('professor', {{ fav.id }}, '{{ fav.professor_name }}')" class="px-3 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-700">삭제</button>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="text-center text-gray-500 py-12">
+                    <p class="text-lg mb-2">아직 찜한 교수님이 없습니다.</p>
+                    <p class="text-sm mb-4">강의 검색 페이지에서 교수님을 찜해보세요.</p>
+                    <a href="/lecture-search" class="inline-block px-5 py-2 rounded-xl bg-black text-white hover:bg-gray-800">강의 검색하기</a>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 찜한 시간표 탭 -->
+    <div id="content-schedules" class="tab-content hidden">
+        <div class="bg-white rounded-xl border p-6">
+            {% if favorite_schedules and favorite_schedules|length > 0 %}
+                <div class="space-y-4">
+                    {% for fav in favorite_schedules %}
+                        <div class="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                            <div class="flex justify-between items-center">
+                                <div class="flex-1">
+                                    <h3 class="text-lg font-semibold">{{ fav.schedule_name or "이름 없는 시간표" }}</h3>
+                                    <p class="text-sm text-gray-600 mt-1">찜한 날짜: {{ fav.created_at or "알 수 없음" }}</p>
+                                </div>
+                                <div class="flex gap-2">
+                                    <button onclick="viewSchedule({{ fav.id }})" class="px-3 py-2 bg-gray-600 text-white rounded text-sm hover:bg-gray-700">보기</button>
+                                    <button onclick="removeFavorite('schedule', {{ fav.id }})" class="px-3 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-700">삭제</button>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="text-center text-gray-500 py-12">
+                    <p class="text-lg mb-2">아직 찜한 시간표가 없습니다.</p>
+                    <p class="text-sm mb-4">시간표 추천 페이지에서 시간표를 찜해보세요.</p>
+                    <a href="/recommend" class="inline-block px-5 py-2 rounded-xl bg-black text-white hover:bg-gray-800">시간표 추천하기</a>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let currentTab = 'lectures';
+
+function showTab(tabName) {
+    // 모든 탭 콘텐츠 숨기기
+    document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.add('hidden');
+    });
+    
+    // 모든 탭 버튼 스타일 초기화
+    document.querySelectorAll('[id^="tab-"]').forEach(btn => {
+        btn.classList.remove('border-black', 'text-black');
+        btn.classList.add('border-transparent', 'text-gray-500');
+    });
+    
+    // 선택한 탭 콘텐츠 표시
+    document.getElementById(`content-${tabName}`).classList.remove('hidden');
+    
+    // 선택한 탭 버튼 스타일 적용
+    const activeTab = document.getElementById(`tab-${tabName}`);
+    activeTab.classList.remove('border-transparent', 'text-gray-500');
+    activeTab.classList.add('border-black', 'text-black');
+    
+    currentTab = tabName;
+    
+    // 탭 변경 시 데이터 로드 (필요한 경우)
+    loadTabData(tabName);
+}
+
+function loadTabData(tabName) {
+    // 탭 변경 시 추가 데이터 로드가 필요한 경우 여기에 구현
+}
+
+       function removeFavorite(type, id, key) {
+           if (!confirm('정말 삭제하시겠습니까?')) {
+               return;
+           }
+           
+           let endpoint = '';
+           if (type === 'lecture') {
+               endpoint = `/api/favorites/lecture/by-id/${id}`;
+           } else if (type === 'professor') {
+               endpoint = `/api/favorites/professor/by-id/${id}`;
+           } else if (type === 'schedule') {
+               // 시간표 삭제는 아직 구현되지 않음
+               alert('시간표 삭제 기능은 곧 구현될 예정입니다.');
+               return;
+           } else {
+               alert('알 수 없는 타입입니다.');
+               return;
+           }
+           
+           fetch(endpoint, { method: 'DELETE' })
+               .then(response => {
+                   if (response.status === 401) {
+                       alert('로그인이 필요합니다.');
+                       window.location.href = '/login';
+                       return null;
+                   }
+                   return response.json();
+               })
+               .then(data => {
+                   if (data && data.success) {
+                       // localStorage에서도 해당 항목 제거
+                       if (key && (type === 'lecture' || type === 'professor')) {
+                           try {
+                               const stored = localStorage.getItem('favoriteStatus');
+                               if (stored) {
+                                   const status = JSON.parse(stored);
+                                   if (type === 'lecture') {
+                                       status.lectures[key] = false;
+                                   } else if (type === 'professor') {
+                                       status.professors[key] = false;
+                                   }
+                                   localStorage.setItem('favoriteStatus', JSON.stringify(status));
+                               }
+                           } catch (e) {
+                               console.error('Error updating localStorage:', e);
+                           }
+                       }
+                       location.reload();
+                   } else if (data) {
+                       alert(data.message || '삭제 중 오류가 발생했습니다.');
+                   }
+               })
+               .catch(error => {
+                   console.error('Error:', error);
+                   alert('삭제 중 오류가 발생했습니다.');
+               });
+       }
+
+function viewSchedule(id) {
+    // TODO: 시간표 상세 보기 기능
+    alert('시간표 보기 기능은 곧 구현될 예정입니다.');
+}
+
+// 초기 로드
+document.addEventListener('DOMContentLoaded', function() {
+    showTab('lectures');
+});
+</script>
+{% endblock %}

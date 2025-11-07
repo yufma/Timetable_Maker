@@ -1,0 +1,447 @@
+{% extends "base.html" %}
+{% block title %}강의검색 | Timetable Recommender{% endblock %}
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 py-8">
+    <div class="mb-6 flex justify-between items-start">
+        <div>
+            <h1 class="text-3xl font-bold mb-2">강의검색</h1>
+            <p class="text-gray-600">원하는 강의를 검색하고 상세 정보를 확인하세요.</p>
+        </div>
+        <a href="/favorites" class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 flex items-center gap-2">
+            <span>❤️</span>
+            <span>찜 목록</span>
+        </a>
+    </div>
+
+    <!-- 검색 영역 -->
+    <div class="bg-white rounded-xl border p-6 mb-6">
+        <h2 class="text-lg font-semibold mb-4">강의 검색</h2>
+        <div class="flex gap-4">
+            <div class="flex-1">
+                <input type="text" id="lecture-search-input" placeholder="강의명 또는 학수번호를 입력하세요" 
+                       class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
+                       onkeypress="if(event.key==='Enter') performSearch()">
+            </div>
+            <button onclick="searchLectures()" class="px-6 py-2 bg-black text-white rounded-lg hover:bg-gray-800">
+                검색
+            </button>
+        </div>
+        <div class="mt-4">
+            <h3 class="text-sm font-medium text-gray-700 mb-2">교수명 검색</h3>
+            <div class="flex gap-4">
+            <div class="flex-1">
+                <input type="text" id="professor-search-input" placeholder="교수명을 입력하세요" 
+                       class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
+                       onkeypress="if(event.key==='Enter') performSearch()">
+            </div>
+            <button onclick="searchProfessor()" class="px-6 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800">
+                검색
+            </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 강의 목록 -->
+    <div class="bg-white rounded-xl border p-6">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-lg font-semibold">강의 목록</h2>
+            <div class="text-sm text-gray-600">
+                총 <span id="lecture-count">0</span>개 강의
+            </div>
+        </div>
+        <div id="lecture-list" class="space-y-4">
+            <!-- 강의 목록이 여기에 동적으로 로드됩니다 -->
+        </div>
+    </div>
+</div>
+
+<script>
+// URL 파라미터에서 professor 값 확인
+const urlParams = new URLSearchParams(window.location.search);
+const professorParam = urlParams.get('professor');
+
+// 초기 강의 목록 로드
+window.addEventListener('DOMContentLoaded', function() {
+    // URL에 professor 파라미터가 있으면 해당 교수로 검색
+    if (professorParam) {
+        document.getElementById('professor-search-input').value = professorParam;
+        searchByProfessorOnly();
+    } else {
+        loadAllLectures();
+    }
+    
+    // localStorage 변경 감지 (다른 탭에서 찜 삭제 시 실시간 업데이트)
+    window.addEventListener('storage', function(e) {
+        if (e.key === 'favoriteStatus') {
+            // localStorage가 변경되었으므로 하트 버튼 업데이트
+            updateFavoriteButtonsFromStorage();
+        }
+    });
+});
+
+// localStorage의 찜 상태를 기반으로 하트 버튼 업데이트
+function updateFavoriteButtonsFromStorage() {
+    const status = getFavoriteStatusFromStorage();
+    
+    // 모든 강의 찜 버튼 업데이트
+    document.querySelectorAll('.favorite-lecture-btn').forEach(btn => {
+        const code = btn.getAttribute('data-code');
+        if (code && status.lectures.hasOwnProperty(code)) {
+            btn.textContent = status.lectures[code] ? '❤️' : '🤍';
+        }
+    });
+    
+    // 모든 교수 찜 버튼 업데이트
+    document.querySelectorAll('.favorite-professor-btn').forEach(btn => {
+        const professor = btn.getAttribute('data-professor');
+        if (professor && status.professors.hasOwnProperty(professor)) {
+            btn.textContent = status.professors[professor] ? '❤️' : '🤍';
+        }
+    });
+}
+
+// 교수명만으로 검색 (URL 파라미터용)
+function searchByProfessorOnly() {
+    const professor = document.getElementById('professor-search-input').value.trim();
+    
+    if (!professor) {
+        loadAllLectures();
+        return;
+    }
+    
+    fetch(`/api/lectures/search-by-professor?professor=${encodeURIComponent(professor)}`)
+        .then(response => response.json())
+        .then(data => {
+            displayLectures(data);
+        })
+        .catch(error => {
+            console.error('Error:', error);
+        });
+}
+
+// 강의명/학수번호 검색
+function searchLectures() {
+    performSearch();
+}
+
+// 교수명 검색
+function searchProfessor() {
+    performSearch();
+}
+
+// 통합 검색 수행 (강의명 + 교수명 동시 검색)
+function performSearch() {
+    const query = document.getElementById('lecture-search-input').value.trim();
+    const professor = document.getElementById('professor-search-input').value.trim();
+    
+    // 둘 다 비어있으면 전체 목록
+    if (!query && !professor) {
+        loadAllLectures();
+        return;
+    }
+    
+    // 둘 다 있으면 통합 검색 API 호출
+    if (query && professor) {
+        fetch(`/api/lectures/search-advanced?q=${encodeURIComponent(query)}&professor=${encodeURIComponent(professor)}`)
+            .then(response => response.json())
+            .then(data => {
+                displayLectures(data);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        return;
+    }
+    
+    // 하나만 있으면 기존 검색 사용
+    if (query) {
+        fetch(`/api/lectures/search?q=${encodeURIComponent(query)}`)
+            .then(response => response.json())
+            .then(data => {
+                displayLectures(data);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+    } else if (professor) {
+        fetch(`/api/lectures/search-by-professor?professor=${encodeURIComponent(professor)}`)
+            .then(response => response.json())
+            .then(data => {
+                displayLectures(data);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+    }
+}
+
+// 전체 강의 목록 로드
+function loadAllLectures() {
+    fetch('/api/lectures')
+        .then(response => response.json())
+        .then(data => {
+            displayLectures(data);
+        })
+        .catch(error => {
+            console.error('Error:', error);
+        });
+}
+
+// 강의 목록 표시
+function displayLectures(lectures) {
+    const container = document.getElementById('lecture-list');
+    const countElement = document.getElementById('lecture-count');
+    
+    countElement.textContent = lectures.length || 0;
+    
+    if (!lectures || lectures.length === 0) {
+        container.innerHTML = '<div class="text-center text-gray-500 py-8">검색 결과가 없습니다.</div>';
+        return;
+    }
+    
+    // 먼저 HTML만 생성
+    container.innerHTML = lectures.map(lecture => `
+        <div class="border rounded-lg p-4 hover:bg-gray-50 transition-colors" data-code="${lecture.code}">
+            <div class="flex justify-between items-start">
+                <div class="flex-1">
+                    <div class="flex items-center gap-3 mb-2">
+                        <button onclick="toggleFavoriteLecture('${lecture.code}', this)" 
+                                class="favorite-lecture-btn text-2xl transition-colors" 
+                                data-code="${lecture.code}"
+                                style="background: none; border: none; cursor: pointer; padding: 0; line-height: 1;">
+                            🤍
+                        </button>
+                        <span class="px-3 py-1 bg-gray-100 rounded text-sm font-mono">${lecture.code}</span>
+                        <h3 class="text-lg font-semibold">${lecture.name}</h3>
+                    </div>
+                    ${lecture.professor ? `
+                        <div class="flex items-center gap-2 mb-1">
+                            <button onclick="toggleFavoriteProfessor('${lecture.professor}', this)" 
+                                    class="favorite-professor-btn text-xl transition-colors" 
+                                    data-professor="${lecture.professor}"
+                                    style="background: none; border: none; cursor: pointer; padding: 0; line-height: 1;">
+                                🤍
+                            </button>
+                            <p class="text-sm text-gray-600">교수: ${lecture.professor}</p>
+                        </div>
+                    ` : ''}
+                    ${lecture.credit ? `<p class="text-sm text-gray-600 mb-1">학점: ${lecture.credit}</p>` : ''}
+                    ${lecture.schedule_time ? `<p class="text-sm text-gray-600 mb-1">시간: ${lecture.schedule_time}</p>` : ''}
+                </div>
+                <div class="flex gap-2">
+                    ${lecture.has_pdf ? `<a href="/api/pdf/subject/${lecture.code.split('.')[0]}" class="px-3 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700" target="_blank">강의계획서</a>` : ''}
+                    <a href="/lecture-search/view-summary?code=${lecture.code}" class="px-3 py-2 bg-gray-600 text-white rounded text-sm hover:bg-gray-700">요약보기</a>
+                </div>
+            </div>
+        </div>
+    `).join('');
+    
+    // 배치로 모든 찜 상태 확인
+    checkFavoritesBatchStatus(lectures);
+}
+
+// localStorage에서 찜 상태 관리
+function getFavoriteStatusFromStorage() {
+    try {
+        const stored = localStorage.getItem('favoriteStatus');
+        return stored ? JSON.parse(stored) : { lectures: {}, professors: {} };
+    } catch (e) {
+        return { lectures: {}, professors: {} };
+    }
+}
+
+function saveFavoriteStatusToStorage(status) {
+    try {
+        localStorage.setItem('favoriteStatus', JSON.stringify(status));
+    } catch (e) {
+        console.error('Error saving favorite status to storage:', e);
+    }
+}
+
+function updateFavoriteStatusInStorage(type, key, isFavorite) {
+    const status = getFavoriteStatusFromStorage();
+    if (type === 'lecture') {
+        status.lectures[key] = isFavorite;
+    } else if (type === 'professor') {
+        status.professors[key] = isFavorite;
+    }
+    saveFavoriteStatusToStorage(status);
+}
+
+// 배치로 찜 상태 확인 및 버튼 업데이트
+async function checkFavoritesBatchStatus(lectures) {
+    if (!lectures || lectures.length === 0) {
+        return;
+    }
+    
+    // 모든 강의 코드와 교수명 수집
+    const subjectCodes = lectures.map(l => l.code).filter(Boolean);
+    const professorNames = lectures
+        .map(l => l.professor)
+        .filter(Boolean)
+        .filter((name, index, self) => self.indexOf(name) === index); // 중복 제거
+    
+    if (subjectCodes.length === 0 && professorNames.length === 0) {
+        return;
+    }
+    
+    // localStorage에서 먼저 찜 상태 확인 및 즉시 표시
+    const cachedStatus = getFavoriteStatusFromStorage();
+    subjectCodes.forEach(code => {
+        const isFavorite = cachedStatus.lectures[code] || false;
+        const btn = document.querySelector(`.favorite-lecture-btn[data-code="${code}"]`);
+        if (btn) {
+            btn.textContent = isFavorite ? '❤️' : '🤍';
+        }
+    });
+    
+    professorNames.forEach(name => {
+        const isFavorite = cachedStatus.professors[name] || false;
+        const btns = document.querySelectorAll(`.favorite-professor-btn[data-professor="${name}"]`);
+        btns.forEach(btn => {
+            btn.textContent = isFavorite ? '❤️' : '🤍';
+        });
+    });
+    
+    try {
+        // 배치 API 호출하여 서버 상태와 동기화
+        const formData = new FormData();
+        subjectCodes.forEach(code => formData.append('subject_codes', code));
+        professorNames.forEach(name => formData.append('professor_names', name));
+        
+        const response = await fetch('/api/favorites/batch-status', {
+            method: 'POST',
+            body: formData
+        });
+        if (!response.ok) {
+            // 로그인하지 않았거나 오류 발생 시 캐시된 상태 유지
+            return;
+        }
+        
+        const data = await response.json();
+        
+        // 서버 상태를 localStorage에 저장
+        saveFavoriteStatusToStorage(data);
+        
+        // 서버 상태로 UI 업데이트 (캐시된 데이터와 다를 수 있음)
+        subjectCodes.forEach(code => {
+            const isFavorite = data.lectures[code] || false;
+            const btn = document.querySelector(`.favorite-lecture-btn[data-code="${code}"]`);
+            if (btn) {
+                btn.textContent = isFavorite ? '❤️' : '🤍';
+            }
+        });
+        
+        professorNames.forEach(name => {
+            const isFavorite = data.professors[name] || false;
+            const btns = document.querySelectorAll(`.favorite-professor-btn[data-professor="${name}"]`);
+            btns.forEach(btn => {
+                btn.textContent = isFavorite ? '❤️' : '🤍';
+            });
+        });
+    } catch (error) {
+        console.error('Error checking batch favorite status:', error);
+        // 오류 발생 시 캐시된 상태 유지
+    }
+}
+
+// 찜 상태 확인 및 버튼 업데이트 (개별 호출용 - 더 이상 사용하지 않음)
+async function checkFavoriteStatus(subjectCode, professorName) {
+    // 이 함수는 더 이상 사용하지 않지만 하위 호환성을 위해 유지
+    // 배치 API를 사용하도록 변경되었음
+}
+
+// 강의 찜 토글
+async function toggleFavoriteLecture(subjectCode, button) {
+    try {
+        const response = await fetch(`/api/favorites/lecture/status/${encodeURIComponent(subjectCode)}`);
+        if (response.status === 401) {
+            alert('로그인이 필요합니다.');
+            window.location.href = '/login';
+            return;
+        }
+        const data = await response.json();
+        const isFavorite = data.is_favorite;
+        
+        let result;
+        if (isFavorite) {
+            // 찜 취소
+            result = await fetch(`/api/favorites/lecture/${encodeURIComponent(subjectCode)}`, {
+                method: 'DELETE'
+            });
+        } else {
+            // 찜 추가
+            result = await fetch(`/api/favorites/lecture/${encodeURIComponent(subjectCode)}`, {
+                method: 'POST'
+            });
+        }
+        
+        if (result.status === 401) {
+            alert('로그인이 필요합니다.');
+            window.location.href = '/login';
+            return;
+        }
+        
+        const resultData = await result.json();
+        if (resultData.success) {
+            const newFavoriteStatus = resultData.is_favorite;
+            button.textContent = newFavoriteStatus ? '❤️' : '🤍';
+            // localStorage에 상태 저장
+            updateFavoriteStatusInStorage('lecture', subjectCode, newFavoriteStatus);
+        } else {
+            alert(resultData.message || '오류가 발생했습니다.');
+        }
+    } catch (error) {
+        console.error('Error toggling favorite:', error);
+        alert('오류가 발생했습니다.');
+    }
+}
+
+// 교수 찜 토글
+async function toggleFavoriteProfessor(professorName, button) {
+    try {
+        const response = await fetch(`/api/favorites/professor/status/${encodeURIComponent(professorName)}`);
+        if (response.status === 401) {
+            alert('로그인이 필요합니다.');
+            window.location.href = '/login';
+            return;
+        }
+        const data = await response.json();
+        const isFavorite = data.is_favorite;
+        
+        let result;
+        if (isFavorite) {
+            // 찜 취소
+            result = await fetch(`/api/favorites/professor/${encodeURIComponent(professorName)}`, {
+                method: 'DELETE'
+            });
+        } else {
+            // 찜 추가
+            result = await fetch(`/api/favorites/professor/${encodeURIComponent(professorName)}`, {
+                method: 'POST'
+            });
+        }
+        
+        if (result.status === 401) {
+            alert('로그인이 필요합니다.');
+            window.location.href = '/login';
+            return;
+        }
+        
+        const resultData = await result.json();
+        if (resultData.success) {
+            const newFavoriteStatus = resultData.is_favorite;
+            button.textContent = newFavoriteStatus ? '❤️' : '🤍';
+            // localStorage에 상태 저장
+            updateFavoriteStatusInStorage('professor', professorName, newFavoriteStatus);
+        } else {
+            alert(resultData.message || '오류가 발생했습니다.');
+        }
+    } catch (error) {
+        console.error('Error toggling professor favorite:', error);
+        alert('오류가 발생했습니다.');
+    }
+}
+</script>
+{% endblock %}
+

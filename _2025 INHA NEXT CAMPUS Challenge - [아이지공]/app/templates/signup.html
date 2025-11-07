@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}회원가입 | Timetable Recommender{% endblock %}
+{% block content %}
+  <div class="max-w-md mx-auto">
+    <h1 class="text-2xl font-bold mb-6">회원가입</h1>
+
+    {% if errors and errors|length %}
+      <div class="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+        <ul class="list-disc ml-5">
+          {% for e in errors %}<li>{{ e }}</li>{% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
+    <form method="post" class="space-y-4" autocomplete="off">
+      <div>
+        <label class="block text-sm font-medium">학번</label>
+        <!-- 숫자 입력 + 브라우저 검증 -->
+        <input
+          type="text"
+          name="student_id"
+          value="{{ student_id or '' }}"
+          title="8자리 숫자로 입력해주세요. (예: 12233880)"
+          inputmode="numeric"
+          maxlength="8"
+          class="mt-1 w-full rounded-lg border p-2"
+          required
+        />
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium">이름</label>
+        <input
+          type="text"
+          name="name"
+          value="{{ name or '' }}"
+          class="mt-1 w-full rounded-lg border p-2"
+          required
+        />
+      </div>
+
+      <!-- 단과대 & 전공 2단 드롭다운 -->
+      <div>
+        <label class="block text-sm font-medium">단과대학</label>
+        <select id="faculty" name="faculty" class="mt-1 w-full rounded-lg border p-2" required>
+          <option value="" disabled {{ 'selected' if not faculty }}>단과대를 선택하세요</option>
+          {% for f in FACULTIES.keys() %}
+            <option value="{{ f }}" {{ 'selected' if faculty == f }}>{{ f }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium">전공</label>
+        <select id="major" name="major" class="mt-1 w-full rounded-lg border p-2" required>
+          <option value="" disabled {{ 'selected' if not major }}>전공을 선택하세요</option>
+          {# 초기 렌더(에러로 돌아온 경우)를 위해 서버에서 한번 그려줌 #}
+          {% if faculty in FACULTIES %}
+            {% for m in FACULTIES[faculty] %}
+              <option value="{{ m }}" {{ 'selected' if major == m }}>{{ m }}</option>
+            {% endfor %}
+          {% endif %}
+        </select>
+      </div>
+
+      <!-- FACULTIES를 JS에서 쓰기 위해 JSON으로 주입 -->
+      <script>
+        // Jinja → JS로 안전하게 전달
+        const FACULTIES = {{ FACULTIES | tojson }};
+
+        const facultySelect = document.getElementById('faculty');
+        const majorSelect   = document.getElementById('major');
+
+        function fillMajors(faculty, selectedMajor=null) {
+          // 기존 옵션 제거
+          while (majorSelect.options.length) majorSelect.remove(0);
+
+          // placeholder
+          const ph = document.createElement('option');
+          ph.textContent = '전공을 선택하세요';
+          ph.value = '';
+          ph.disabled = true;
+          ph.selected = true;
+          majorSelect.add(ph);
+
+          if (!faculty || !FACULTIES[faculty]) return;
+
+          FACULTIES[faculty].forEach(m => {
+            const opt = document.createElement('option');
+            opt.value = m;
+            opt.textContent = m;
+            if (selectedMajor && selectedMajor === m) opt.selected = true;
+            majorSelect.add(opt);
+          });
+        }
+
+        // 단과대 변경 시 전공 목록 갱신
+        facultySelect.addEventListener('change', () => fillMajors(facultySelect.value, null));
+
+        // 에러로 돌아온 경우 선택값 유지
+        (function bootstrapSelection() {
+          const selectedFaculty = "{{ faculty or '' }}";
+          const selectedMajor   = "{{ major or '' }}";
+          if (selectedFaculty) {
+            fillMajors(selectedFaculty, selectedMajor || null);
+          }
+        })();
+      </script>
+
+      <div>
+        <label class="block text-sm font-medium">비밀번호</label>
+        <input
+          type="password"
+          name="password"
+          class="mt-1 w-full rounded-lg border p-2"
+          required
+          autocomplete="new-password"
+        />
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium">비밀번호 확인</label>
+        <input
+          type="password"
+          name="confirm_password"
+          class="mt-1 w-full rounded-lg border p-2"
+          required
+          autocomplete="new-password"
+        />
+      </div>
+
+      <button class="w-full rounded-lg bg-black text-white py-2 hover:bg-gray-800">가입하기</button>
+      <p class="text-sm text-gray-600 text-center">
+        이미 계정이 있으신가요? <a href="/login" class="underline">로그인</a>
+      </p>
+    </form>
+  </div>
+{% endblock %}

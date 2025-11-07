@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+sqlmodel
+jinja2
+passlib
+python-multipart
+langchain
+langchain-openai
+itsdangerous
+SQLAlchemy>=2.0
+python-dotenv>=1.0
+pdfplumber>=0.10.0
+PyPDF2>=3.0.0

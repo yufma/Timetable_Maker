@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}로그인 | Timetable Recommender{% endblock %}
+{% block content %}
+    <div class="max-w-md mx-auto">
+        <h1 class="text-2xl font-bold mb-6">로그인</h1>
+
+        {% if errors and errors|length %}
+            <div class="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                <ul class="list-disc ml-5">
+                    {% for e in errors %}<li>{{ e }}</li>{% endfor %}
+                </ul>
+             </div>
+        {% endif %}
+
+        <form method="post" class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium">학번</label>
+                <input type="text" name="student_id" value="{{ student_id or '' }}" class="mt-1 w-full rounded-lg border p-2" required inputmode="numeric" />
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium">비밀번호</label>
+                <input type="password" name="password" class="mt-1 w-full rounded-lg border p-2" required />
+            </div>
+
+            <button class="w-full rounded-lg bg-black text-white py-2 hover:bg-gray-800">로그인</button>
+            <p class="text-sm text-gray-600 text-center">계정이 없으신가요? <a href="/signup" class="underline">회원가입</a></p>
+            </form>
+        </div>
+    {% endblock %}

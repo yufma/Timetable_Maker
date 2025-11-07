@@ -1,0 +1,2395 @@
+{% extends "base.html" %}
+{% block title %}시간표 추천 | Timetable Recommender{% endblock %}
+
+{% block content %}
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+  <!-- Left: Timetable preview -->
+  <div class="md:col-span-1">
+    <div class="sticky top-4" style="max-height: calc(100vh - 2rem); overflow-y: auto; overflow-x: visible;">
+      <!-- 스텝 네비게이션 (미리보기 시간표 위쪽) -->
+      <div class="mb-3 flex flex-col justify-center" style="min-height: 3.5rem; overflow-x: visible;">
+        <div class="flex items-center" style="width: 100%; gap: 0; min-width: max-content; overflow-x: visible;">
+          {% set step_names = {1: "학점 설정", 2: "전공필수", 3: "전공선택", 4: "기초/중점 교양", 5: "핵심교양", 6: "일반교양", 7: "시간표 결과"} %}
+          {% for s in range(1, 8) %}
+            {% if s > 1 %}
+              <!-- 연결선과 화살표 -->
+              <div class="flex items-center flex-shrink-0" style="flex: 1 1 0%; min-width: 0;">
+                <div class="h-0.5 flex-1" style="background: {% if step >= s %}{% if step > s %}#3b82f6{% else %}#60a5fa{% endif %}{% else %}#e5e7eb{% endif %};"></div>
+                <svg class="flex-shrink-0" width="12" height="12" viewBox="0 0 12 12" style="margin: 0 -2px;">
+                  <path d="M0 0 L12 6 L0 12 Z" fill="{% if step > s %}#3b82f6{% elif step == s %}#60a5fa{% else %}#e5e7eb{% endif %}" />
+                </svg>
+              </div>
+            {% endif %}
+            <!-- 스텝 버튼 -->
+            <a href="/recommend?step={{ s }}&semester={{ semester }}" 
+               class="flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-full text-xs font-semibold transition-all {% if step == s %}bg-blue-600 text-white shadow-md ring-2 ring-blue-300{% elif step > s %}bg-blue-100 text-blue-700 hover:bg-blue-200 border-2 border-blue-300{% else %}bg-gray-100 text-gray-600 hover:bg-gray-200 border-2 border-gray-300{% endif %}" style="flex-shrink: 0;">
+              {{ s }}
+            </a>
+            {% endfor %}
+        </div>
+        <!-- 스텝 이름 표시 -->
+        <div class="mt-1 text-xs text-center text-gray-600 font-medium">
+          {{ step_names[step] }}
+      </div>
+    </div>
+
+      <!-- 사용 설명 안내 박스 -->
+      <div class="mb-4 bg-blue-50 border-l-4 border-blue-500 rounded-lg p-3 shadow-sm">
+        <div class="flex items-start">
+          <div class="flex-shrink-0">
+            <svg class="h-5 w-5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <div class="ml-2 flex-1">
+            <h3 class="text-xs font-semibold text-blue-900 mb-1">💡 사용 안내</h3>
+            <div class="text-xs text-blue-800">
+              {% if step == 1 %}
+                <p><strong>총 학점</strong>을 설정해주세요. (16~21학점)</p>
+              {% elif step == 2 %}
+                <p><strong>전공필수</strong> 과목을 선택하세요.</p>
+                <p class="mt-1 text-xs text-blue-700">• 학기별 필터링 가능</p>
+              {% elif step == 3 %}
+                <p><strong>전공선택</strong> 과목을 선택하세요.</p>
+                <p class="mt-1 text-xs text-blue-700">• 시간 미리보기로 충돌 확인</p>
+              {% elif step == 4 %}
+                <p><strong>기초/중점 교양</strong>을 선택하세요.</p>
+                <p class="mt-1 text-xs text-blue-700">• 균형있게 선택하세요</p>
+              {% elif step == 5 %}
+                <p><strong>핵심교양 학점</strong>을 설정하고 선택하세요.</p>
+                <p class="mt-1 text-xs text-blue-700">• 영역별로 다양하게 선택</p>
+              {% elif step == 6 %}
+                <p><strong>일반교양</strong>을 선택하세요.</p>
+                <p class="mt-1 text-xs text-blue-700">• 웹강의 필터 활용 가능</p>
+              {% elif step == 7 %}
+                <p><strong>추천 시간표</strong>를 확인하세요.</p>
+                <p class="mt-1 text-xs text-blue-700">• 클릭하여 상세 내용 확인</p>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <h2 class="font-bold mb-2 text-sm">미리보기 시간표</h2>
+      <div id="timetable" class="border rounded-xl bg-white overflow-hidden">
+        <!-- Header days -->
+        <div class="grid grid-cols-6 text-center text-xs font-semibold bg-gray-100 border-b">
+          <div class="py-1.5">시간</div>
+          <div class="py-1.5">월</div>
+          <div class="py-1.5">화</div>
+          <div class="py-1.5">수</div>
+          <div class="py-1.5">목</div>
+          <div class="py-1.5">금</div>
+        </div>
+        <!-- Body grid -->
+        <div class="relative">
+          <!-- 9시~22시까지 (13시간, 1시간 단위) -->
+          <div class="grid grid-cols-6" style="grid-template-rows: repeat(13, 24px); max-height: 312px; overflow-y: auto;">
+            <!-- time labels -->
+            {% for i in range(13) %}
+              {% set hour = 9 + i %}
+              <div class="text-xs text-right pr-2 border-r py-0.5">{{'%02d:00' % hour}}</div>
+              {% for d in range(5) %}
+                <div class="border-b border-r"></div>
+              {% endfor %}
+            {% endfor %}
+          </div>
+          <!-- Preview blocks will be injected here -->
+          <div id="preview-layer" class="absolute inset-0 pointer-events-none"></div>
+        </div>
+        <!-- Web lectures -->
+        <div class="border-t p-2 text-xs bg-gray-50">
+          <div class="font-semibold">웹강의 (미리보기)</div>
+          <ul id="web-lectures" class="list-disc pl-5"></ul>
+        </div>
+      </div>
+
+          </div>
+          </div>
+
+  <!-- Right: Step content -->
+  <div class="md:col-span-2">
+    <!-- 다음/이전 버튼과 Step 제목을 한 줄에 배치 -->
+    <div class="flex items-center justify-between mb-1" style="min-height: 3.5rem;">
+      <h2 class="font-bold text-lg flex items-center gap-3">
+        <span>Step {{ step }}: {{ step_names[step] }}</span>
+        {% if step in [2,3,4] %}
+        <form method="get" action="/recommend" id="semester-form" class="inline-block">
+          <input type="hidden" name="step" value="{{ step }}">
+          <select name="semester" id="semester-select" class="border rounded px-2 py-1 text-sm">
+            {% for sopt in semesters %}
+              <option value="{{sopt}}" {% if semester==sopt %}selected{% endif %}>{{sopt}}</option>
+            {% endfor %}
+          </select>
+        </form>
+        {% endif %}
+      </h2>
+      <div class="flex items-center gap-2">
+        <form method="post" action="/recommend/step" id="step-navigation-form" class="flex items-center gap-2">
+          <input type="hidden" name="step" value="{{ step }}">
+          <input type="hidden" name="semester" value="{{ semester }}">
+          {% if step == 1 %}
+          <input type="hidden" name="target_credits" id="target_credits_form_top">
+          {% else %}
+          <input type="hidden" name="selected_fids" id="selected_fids_input_top">
+          {% endif %}
+          {% if step in [2,3,4,5,6] %}
+          <input type="hidden" name="eval_choice" id="eval_choice_form_top">
+          <input type="hidden" name="assign_choice" id="assign_choice_form_top">
+          <input type="hidden" name="quiz_choice" id="quiz_choice_form_top">
+          <input type="hidden" name="credit_choice" id="credit_choice_form_top">
+          {% if step in [5,6] %}
+          <input type="hidden" name="web_choice" id="web_choice_form_top">
+          {% endif %}
+          <input type="hidden" name="sort_choice" id="sort_choice_form_top">
+          {% endif %}
+          {% if step == 1 %}
+          <button name="action" value="next" type="submit" onclick="return updateHiddenInputs();" class="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700">다음</button>
+          {% elif step == 5 %}
+          <button name="action" value="prev" type="submit" onclick="updateHiddenInputs();" class="px-4 py-2 rounded-lg bg-white border hover:bg-gray-50">이전</button>
+          <button name="action" value="next" type="submit" onclick="return validateCoreCredits();" class="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700">다음</button>
+          {% elif step == 6 %}
+          <button name="action" value="prev" type="submit" onclick="updateHiddenInputs();" class="px-4 py-2 rounded-lg bg-white border hover:bg-gray-50">이전</button>
+          <button name="action" value="next" type="submit" onclick="updateHiddenInputs();" class="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700">시간표 생성</button>
+          {% elif step == 7 %}
+          <button name="action" value="prev" type="submit" onclick="updateHiddenInputs();" class="px-4 py-2 rounded-lg bg-white border hover:bg-gray-50">이전</button>
+          {% else %}
+          <button name="action" value="prev" type="submit" onclick="updateHiddenInputs();" class="px-4 py-2 rounded-lg bg-white border hover:bg-gray-50">이전</button>
+          <button name="action" value="next" type="submit" onclick="updateHiddenInputs();" class="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700">다음</button>
+          {% endif %}
+        </form>
+      </div>
+    </div>
+
+    {% if step == 1 %}
+      <div class="bg-white rounded-xl border p-4">
+        <div class="space-y-4">
+          <label class="block font-semibold">금학기에 이수할 학점 (16~21)</label>
+          <input type="number" min="16" max="21" id="target_credits_input" value="{{ state.target_credits }}" class="border rounded px-3 py-2 w-40" oninput="validateTargetCredits();" onblur="validateTargetCredits();">
+          <div id="target_credits_error" class="text-sm text-red-600 hidden"></div>
+          <div class="text-sm text-gray-600">상단의 '다음' 버튼을 눌러주세요.</div>
+        </div>
+      </div>
+
+    {% elif step in [2,3,4,5,6] %}
+        <!-- 검색 기능 -->
+        <div class="mb-4 bg-white rounded-xl border p-4">
+          <label class="text-sm font-semibold mb-2 block">🔍 과목 검색</label>
+          <div class="flex gap-2">
+            <input 
+              type="text" 
+              id="course_search" 
+              placeholder="과목명, 학수번호, 교수명으로 검색..." 
+              class="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button 
+              id="clear_search" 
+              class="px-3 py-2 border rounded-lg text-sm hover:bg-gray-50"
+              title="검색 초기화"
+            >
+              ✕
+            </button>
+          </div>
+          <div class="mt-2 text-xs text-gray-500">
+            <span id="search_result_count"></span>
+          </div>
+        </div>
+
+        <!-- 필터 UI 박스 -->
+        <div class="mb-4 bg-white rounded-xl border p-4">
+          <div class="mb-3 grid md:grid-cols-2 gap-2">
+            <div>
+              <label class="text-sm">평가방식</label>
+              <select id="eval_choice" class="border rounded px-2 py-1 w-full">
+                {% for v in ["전체","상대평가","절대평가","Pass/Fail"] %}
+                  <option {% if state.filters.eval==v %}selected{% endif %}>{{v}}</option>
+              {% endfor %}
+            </select>
+          </div>
+            <div>
+              <label class="text-sm">과제</label>
+              <select id="assign_choice" class="border rounded px-2 py-1 w-full">
+                {% for v in ["전체","유","무"] %}
+                  <option {% if state.filters.assign==v %}selected{% endif %}>{{v}}</option>
+                {% endfor %}
+              </select>
+                </div>
+            <div>
+              <label class="text-sm">퀴즈</label>
+              <select id="quiz_choice" class="border rounded px-2 py-1 w-full">
+                {% for v in ["전체","유","무"] %}
+                  <option {% if state.filters.quiz==v %}selected{% endif %}>{{v}}</option>
+                {% endfor %}
+              </select>
+              </div>
+            <div>
+              <label class="text-sm">학점</label>
+              <select id="credit_choice" class="border rounded px-2 py-1 w-full">
+                {% for v in ["전체","1","2","3","4"] %}
+                  <option {% if state.filters.credit==v %}selected{% endif %}>{{v}}</option>
+            {% endfor %}
+              </select>
+          </div>
+            {% if step in [5,6] %}
+            <div>
+              <label class="text-sm">웹강</label>
+              <select id="web_choice" class="border rounded px-2 py-1 w-full">
+                {% for v in ["전체","웹강","일반"] %}
+                  <option {% if state.filters.web==v %}selected{% endif %}>{{v}}</option>
+                {% endfor %}
+              </select>
+          </div>
+        {% endif %}
+            <div>
+              <label class="text-sm">정렬</label>
+              <select id="sort_choice" class="border rounded px-2 py-1 w-full">
+                {% for v in ["기본순","과제 적은순","퀴즈 적은순"] %}
+                  <option {% if state.filters.sort==v %}selected{% endif %}>{{v}}</option>
+                {% endfor %}
+              </select>
+          </div>
+              </div>
+          {% if step == 5 %}
+            <form method="post" action="/recommend/step" id="core-credits-form" class="mt-3">
+              <input type="hidden" name="step" value="5">
+              <input type="hidden" name="semester" value="{{ semester }}">
+              <input type="hidden" name="selected_fids" id="selected_fids_core_credits">
+              <input type="hidden" name="eval_choice" id="eval_choice_core_credits">
+              <input type="hidden" name="assign_choice" id="assign_choice_core_credits">
+              <input type="hidden" name="quiz_choice" id="quiz_choice_core_credits">
+              <input type="hidden" name="credit_choice" id="credit_choice_core_credits">
+              <input type="hidden" name="web_choice" id="web_choice_core_credits">
+              <input type="hidden" name="sort_choice" id="sort_choice_core_credits">
+              <label class="font-semibold mr-2">핵심교양 학점 설정</label>
+              <input type="number" min="0" max="9" name="core_credits" value="{{ state.core_credits if state.core_credits is not none else '' }}" class="border rounded px-2 py-1 w-24">
+              <button name="action" value="save" type="submit" onclick="return updateCoreCreditsForm();" class="ml-2 px-3 py-1 rounded border">저장</button>
+            </form>
+          {% endif %}
+        </div>
+
+        {% if error_message %}
+          <div class="mb-4 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+            {{ error_message }}
+          </div>
+        {% endif %}
+
+        <!-- 선택한 과목 리스트 표시 (동적 업데이트용) -->
+        {% set step_names_map = {2: "전공필수", 3: "전공선택", 4: "기초/중점 교양", 5: "핵심교양", 6: "일반교양"} %}
+        {% if step in [2,3,4,5,6] %}
+          <div id="selected-courses-list" class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded selected-courses-list" style="{% if not selected_courses_by_step.get(step_names_map[step]) %}display: none;{% endif %}">
+            {% if selected_courses_by_step.get(step_names_map[step]) %}
+              <div class="font-semibold text-sm mb-2">{{ step_names_map[step] }} 선택한 과목 ({{ selected_courses_by_step[step_names_map[step]]|length }}개):</div>
+              <div class="space-y-1">
+                {% for course in selected_courses_by_step[step_names_map[step]] %}
+                  <div class="text-sm text-gray-700">
+                    {{ course.course_id }} — {{ course.course_name }} ({{ course.prof }}) — {{ course.credit }}학점
+            </div>
+            {% endfor %}
+          </div>
+            {% endif %}
+          </div>
+        {% endif %}
+
+        <!-- 강의 목록 UI 박스 -->
+        <div class="bg-white rounded-xl border p-4">
+          <div class="flex justify-end items-center mb-3">
+            <button id="reset_btn" class="px-3 py-1 rounded border">선택 초기화</button>
+              </div>
+          <div id="sections_container" class="space-y-3"></div>
+            </div>
+
+    {% elif step == 7 %}
+      <div class="bg-white rounded-xl border p-4">
+        <h3 class="font-semibold mb-2">추천 시간표 결과</h3>
+        
+        {% if error_message %}
+          <div class="mb-4 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+            {{ error_message }}
+          </div>
+        {% endif %}
+        
+        <!-- 1. 가장 위: 생성된 시간표 수 표시 -->
+        {% if schedules and schedules|length > 0 %}
+          <div class="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div class="font-semibold text-base text-center">
+              총 <span class="text-blue-700 text-lg">{{ schedules|length }}</span>개의 시간표가 추천되었습니다!
+            </div>
+          </div>
+        {% endif %}
+        
+        <!-- 2. 선택한 과목 리스트 전체 표시 (AI 추천 위에 배치) -->
+        <div class="mb-4 border-2 border-blue-300 rounded-lg overflow-hidden bg-blue-50 shadow-sm">
+          <button onclick="toggleSelectedSummary()" class="w-full p-3 bg-blue-100 hover:bg-blue-200 flex items-center text-left border-b-2 border-blue-300">
+            <div class="text-blue-600 transition-transform mr-3 flex-shrink-0 text-base" id="selected-summary-toggle">▶</div>
+            <div class="font-semibold text-sm text-blue-900">📋 선택한 과목 요약</div>
+          </button>
+          <div id="selected-summary-content" class="hidden p-4 bg-blue-50 border-t-2 border-blue-300">
+            {% for step_name, courses in selected_courses_by_step.items() %}
+              {% if courses %}
+                <div class="mb-3 p-2 bg-white rounded border border-blue-200">
+                  <div class="font-medium text-sm text-blue-800 mb-1">{{ step_name }} ({{ courses|length }}개):</div>
+                  <div class="ml-4 space-y-1 text-xs text-gray-700">
+                    {% for course in courses %}
+                      <div class="py-1 border-b border-blue-100 last:border-b-0">{{ course.course_id }} — {{ course.course_name }} ({{ course.prof }}) — {{ course.credit }}학점</div>
+                    {% endfor %}
+                  </div>
+                </div>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+        
+        <!-- 3. AI 추천 시간표 섹션 (Step 7일 때만 표시) -->
+        {% if step == 7 and schedules and schedules|length > 0 %}
+          <!-- AI 추천 요청 섹션 (AI 추천이 없을 때 표시) -->
+          {% if not ai_schedules or ai_schedules|length == 0 %}
+            <div class="mb-6 border-2 border-purple-400 rounded-xl overflow-hidden bg-purple-50 shadow-lg">
+              <div class="p-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white">
+                <div class="flex items-center gap-2">
+                  <span class="text-lg font-bold">🤖 AI 추천</span>
+                </div>
+              </div>
+              
+              <!-- 피드백 입력 섹션 (AI 추천이 없을 때) -->
+              <div class="p-4 bg-white border-t-2 border-purple-300">
+                <div class="mb-3">
+                  <textarea 
+                    id="ai-feedback-input" 
+                    class="w-full p-3 text-sm border border-purple-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
+                    rows="4"
+                    placeholder="무엇이든 부탁하세요"></textarea>
+                </div>
+                <button 
+                  onclick="generateAISchedule()" 
+                  class="w-full px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors shadow-md">
+                  ✨ AI 시간표 생성하기
+                </button>
+              </div>
+            </div>
+          {% endif %}
+          
+          <!-- AI 추천 시간표 표시 (생성된 경우) - 생성 버튼 아래에 표시 -->
+          {% if ai_schedules and ai_schedules|length > 0 %}
+            <div class="mb-6 border-2 border-purple-400 rounded-xl overflow-hidden bg-purple-50 shadow-lg" id="ai-schedules-container">
+              <div class="p-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white">
+                <div class="flex items-center gap-2">
+                  <span class="text-lg font-bold">🤖 AI 추천</span>
+                </div>
+              </div>
+              
+              {% for ai_sc in ai_schedules %}
+              <div class="border-t-2 border-purple-300">
+                <button onclick="toggleAISchedule({{ loop.index0 }})" class="w-full p-3 bg-purple-100 hover:bg-purple-200 flex items-center text-left">
+                  <div class="text-purple-600 transition-transform mr-3 flex-shrink-0" id="ai-schedule-toggle-{{ loop.index0 }}">▶</div>
+                  <div class="flex items-center gap-4 flex-1">
+                    <div class="font-semibold text-sm text-purple-900">AI 추천 시간표</div>
+                    <div class="text-xs text-purple-700">
+                      총 학점: <b>{{ ai_sc.total_credits }}</b>
+                      {% if ai_sc.credits_by_category %}
+                        {% set cat = ai_sc.credits_by_category %}
+                        | 전공필수: {{ cat.get('전공필수', 0) }}
+                        | 전공선택: {{ cat.get('전공선택', 0) }}
+                        | 기초/중점 교양: {{ cat.get('기초/중점 교양', 0) }}
+                        | 핵심교양: {{ cat.get('핵심교양', 0) }}
+                        | 일반교양: {{ cat.get('일반교양', 0) }}
+                      {% endif %}
+                    </div>
+                  </div>
+                </button>
+                
+                <!-- 피드백 입력 섹션 (항상 표시) -->
+                <div class="p-3 bg-purple-50 border-t border-purple-200">
+                  <div class="mb-2">
+                    <textarea 
+                      id="ai-feedback-{{ loop.index0 }}" 
+                      class="w-full p-2 text-sm border border-purple-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
+                      rows="3"
+                      placeholder="무엇이든 부탁하세요"></textarea>
+                  </div>
+                  <button 
+                    onclick="refreshAIScheduleWithFeedback({{ loop.index0 }})" 
+                    class="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors">
+                    🔄 피드백 반영하여 새로 생성
+                  </button>
+                </div>
+                
+               <!-- AI 시간표 내용 (토글) -->
+               <div id="ai-schedule-content-{{ loop.index0 }}" class="hidden p-3 bg-white">
+                 <!-- AI 제안 표시 (있는 경우) -->
+                 {% if ai_sc.ai_suggestion %}
+                   <div class="mb-4 p-3 bg-blue-50 border-l-4 border-blue-400 rounded-lg">
+                     <div class="flex items-start">
+                       <div class="flex-shrink-0">
+                         <svg class="h-5 w-5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                         </svg>
+                       </div>
+                       <div class="ml-2 flex-1">
+                         <h4 class="text-sm font-semibold text-blue-900 mb-1">💡 AI 추천 제안</h4>
+                         <div class="text-sm text-blue-800 whitespace-pre-line">{{ ai_sc.ai_suggestion }}</div>
+                       </div>
+                     </div>
+                   </div>
+                 {% endif %}
+                 
+                 <div class="grid grid-cols-6 text-center text-xs font-semibold bg-purple-100 border-b rounded-t">
+                   <div class="py-2">시간</div>
+                   <div class="py-2">월</div>
+                   <div class="py-2">화</div>
+                   <div class="py-2">수</div>
+                   <div class="py-2">목</div>
+                   <div class="py-2">금</div>
+                 </div>
+                  <div class="relative">
+                    <div class="grid grid-cols-6" style="grid-template-rows: repeat(13, 40px); max-height: 520px; overflow-y: auto;">
+                      {% for i in range(13) %}
+                        {% set hour = 9 + i %}
+                        <div class="text-xs text-right pr-2 border-r py-1.5">{{'%02d:00' % hour}}</div>
+                        {% for d in range(5) %}
+                          <div class="border-b border-r"></div>
+                        {% endfor %}
+                      {% endfor %}
+                    </div>
+                    <div class="absolute inset-0 ai-schedule-layer" style="max-height: 520px; overflow-y: auto;">
+                      {% for s in ai_sc.sections %}
+                        {% for mt in s.meetings %}
+                          {% set day = mt[0] %}
+                          {% set sslot = mt[1] %}
+                          {% set eslot = mt[2] %}
+                          <div class="slot absolute rounded text-white p-2 overflow-hidden"
+                               data-day="{{ day }}"
+                               data-sslot="{{ sslot }}"
+                               data-eslot="{{ eslot }}"
+                               style="box-sizing: border-box;">
+                            <div class="font-semibold text-xs leading-tight mb-1">{{ s.course_name }}</div>
+                            <div class="opacity-90 text-xs leading-tight">{{ s.course_id }}</div>
+                          </div>
+                        {% endfor %}
+                      {% endfor %}
+                    </div>
+                  </div>
+                  <div class="mt-2 text-xs">
+                    <div class="font-semibold">웹강의</div>
+                    <ul class="list-disc pl-5">
+                      {% for s in ai_sc.sections if s.is_web %}
+                        <li>{{ s.course_name }} ({{ s.course_id }}) — {{ s.prof }} — {{ s.credit }}학점</li>
+                      {% endfor %}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endif %}
+        
+        <!-- 3. 모든 시간표를 토글 형식으로 나열 -->
+        {% if schedules and schedules|length > 0 %}
+          <div class="space-y-4">
+            {% for sc in schedules %}
+              <div class="rounded-xl border overflow-hidden">
+                <!-- 시간표 헤더 (토글 버튼) -->
+                <button onclick="toggleSchedule({{ loop.index0 }})" class="w-full p-3 bg-gray-50 hover:bg-gray-100 flex items-center text-left">
+                  <div class="text-gray-500 transition-transform mr-3 flex-shrink-0" id="schedule-toggle-{{ loop.index0 }}">▶</div>
+                  <div class="flex items-center gap-4 flex-1">
+                    <div class="font-semibold text-sm">시간표 {{ loop.index }}</div>
+                    <div class="text-xs text-gray-600">
+                      총 학점: <b>{{ sc.total_credits }}</b>
+                      {% if sc.credits_by_category %}
+                        {% set cat = sc.credits_by_category %}
+                        | 전공필수: {{ cat.get('전공필수', 0) }}
+                        | 전공선택: {{ cat.get('전공선택', 0) }}
+                        | 기초/중점 교양: {{ cat.get('기초/중점 교양', 0) }}
+                        | 핵심교양: {{ cat.get('핵심교양', 0) }}
+                        | 일반교양: {{ cat.get('일반교양', 0) }}
+                      {% endif %}
+          </div>
+                  </div>
+                </button>
+                
+                <!-- 시간표 내용 (토글) -->
+                <div id="schedule-content-{{ loop.index0 }}" class="hidden p-3">
+                  <div class="grid grid-cols-6 text-center text-xs font-semibold bg-gray-100 border-b rounded-t">
+                    <div class="py-2">시간</div>
+                    <div class="py-2">월</div>
+                    <div class="py-2">화</div>
+                    <div class="py-2">수</div>
+                    <div class="py-2">목</div>
+                    <div class="py-2">금</div>
+                  </div>
+                  <div class="relative">
+                    <div class="grid grid-cols-6" style="grid-template-rows: repeat(13, 40px); max-height: 520px; overflow-y: auto;">
+                      {% for i in range(13) %}
+                        {% set hour = 9 + i %}
+                        <div class="text-xs text-right pr-2 border-r py-1.5">{{'%02d:00' % hour}}</div>
+                        {% for d in range(5) %}
+                          <div class="border-b border-r"></div>
+                        {% endfor %}
+                      {% endfor %}
+                    </div>
+                    <div class="absolute inset-0 schedule-layer" style="max-height: 520px; overflow-y: auto;">
+                      {% for s in sc.sections %}
+                        {% for mt in s.meetings %}
+                          {% set day = mt[0] %}
+                          {% set sslot = mt[1] %}
+                          {% set eslot = mt[2] %}
+                          <div class="slot absolute rounded text-white p-2 overflow-hidden"
+                               data-day="{{ day }}"
+                               data-sslot="{{ sslot }}"
+                               data-eslot="{{ eslot }}"
+                               style="box-sizing: border-box;">
+                            <div class="font-semibold text-xs leading-tight mb-1">{{ s.course_name }}</div>
+                            <div class="opacity-90 text-xs leading-tight">{{ s.course_id }}</div>
+                          </div>
+                        {% endfor %}
+                      {% endfor %}
+                    </div>
+                  </div>
+                  <div class="mt-2 text-xs">
+                    <div class="font-semibold">웹강의</div>
+                    <ul class="list-disc pl-5">
+                      {% for s in sc.sections if s.is_web %}
+                        <li>{{ s.course_name }} ({{ s.course_id }}) — {{ s.prof }} — {{ s.credit }}학점</li>
+                      {% endfor %}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="p-4 bg-yellow-50 border rounded">조건에 맞는 시간표가 존재하지 않습니다.</div>
+        {% endif %}
+      </div>
+    {% endif %}
+    </div>
+  </div>
+
+<!-- JSON bootstrap to avoid Jinja-in-JS issues -->
+<script id="bootstrap-json" type="application/json">
+{
+  "step": {{ step|int }},
+  "semester": "{{ semester }}",
+  "stateSelected": {{ state.selected_sections|tojson }}{% if step in [2,3,4,5,6] %},
+  "courseIds": {{ (courses|map(attribute='학수번호')|list)|tojson }},
+  "selectedCoursesByStep": {{ selected_courses_by_step|tojson }}{% endif %}{% if step == 5 %},
+  "coreMap": {{ core_map|tojson }},
+  "coreCredits": {{ state.core_credits|tojson if state.core_credits else 'null' }}{% endif %}
+}
+</script>
+
+  <script>
+// --- State (client-side) ---
+const BOOTSTRAP = JSON.parse(document.getElementById("bootstrap-json").textContent);
+const STEP = BOOTSTRAP.step;
+const STEP_KEY = {2:"p1",3:"p2",4:"p3",5:"p4",6:"p5"}[STEP] || null;
+const selectedFids = new Set((STEP_KEY && BOOTSTRAP.stateSelected[STEP_KEY]) ? BOOTSTRAP.stateSelected[STEP_KEY] : []);
+// 선택한 순서를 추적하는 배열 (필터와 관계없이 선택한 순서 유지)
+const selectedFidsOrder = (STEP_KEY && BOOTSTRAP.stateSelected[STEP_KEY]) ? [...BOOTSTRAP.stateSelected[STEP_KEY]] : [];
+
+function validateTargetCredits() {
+  const input = document.getElementById("target_credits_input");
+  const errorDiv = document.getElementById("target_credits_error");
+  if (!input || !errorDiv) return;
+  
+  const val = parseInt(input.value);
+  if (isNaN(val) || val < 16 || val > 21) {
+    errorDiv.textContent = "학점은 16~21 사이의 값만 입력 가능합니다.";
+    errorDiv.classList.remove("hidden");
+    input.classList.add("border-red-500");
+    return false;
+  } else {
+    errorDiv.classList.add("hidden");
+    input.classList.remove("border-red-500");
+    return true;
+  }
+}
+
+function updateHiddenInputs() {
+  // Step 1인 경우 target_credits 값 설정 및 검증
+  if (STEP === 1) {
+    if (!validateTargetCredits()) {
+      return false; // 검증 실패 시 폼 제출 방지
+    }
+    const targetCreditsInput = document.getElementById("target_credits_input");
+    const targetCreditsForm = document.getElementById("target_credits_form_top");
+    if (targetCreditsInput && targetCreditsForm) {
+      const val = targetCreditsInput.value || "16";
+      targetCreditsForm.value = val;
+      targetCreditsForm.setAttribute("value", val);
+    }
+    return true;
+  }
+  
+  // Step 2-6인 경우 선택된 과목과 필터 값 설정
+  const selectedStr = Array.from(selectedFids).join(",");
+  const selectedInput = document.getElementById("selected_fids_input_top");
+  if (selectedInput) {
+    selectedInput.setAttribute("value", selectedStr);
+    selectedInput.value = selectedStr;
+  }
+  
+  const evalSel = document.getElementById("eval_choice");
+  const assignSel = document.getElementById("assign_choice");
+  const quizSel = document.getElementById("quiz_choice");
+  const creditSel = document.getElementById("credit_choice");
+  const webSel = document.getElementById("web_choice");
+  const sortSel = document.getElementById("sort_choice");
+  
+  const evalInput = document.getElementById("eval_choice_form_top");
+  const assignInput = document.getElementById("assign_choice_form_top");
+  const quizInput = document.getElementById("quiz_choice_form_top");
+  const creditInput = document.getElementById("credit_choice_form_top");
+  const webInput = document.getElementById("web_choice_form_top");
+  const sortInput = document.getElementById("sort_choice_form_top");
+  
+  if (evalSel && evalInput) {
+    const val = evalSel.value || "전체";
+    evalInput.value = val;
+    evalInput.setAttribute("value", val);
+  }
+  if (assignSel && assignInput) {
+    const val = assignSel.value || "전체";
+    assignInput.value = val;
+    assignInput.setAttribute("value", val);
+  }
+  if (quizSel && quizInput) {
+    const val = quizSel.value || "전체";
+    quizInput.value = val;
+    quizInput.setAttribute("value", val);
+  }
+  if (creditSel && creditInput) {
+    const val = creditSel.value || "전체";
+    creditInput.value = val;
+    creditInput.setAttribute("value", val);
+  }
+  if (webSel && webInput) {
+    const val = webSel.value || "전체";
+    webInput.value = val;
+    webInput.setAttribute("value", val);
+  }
+  if (sortSel && sortInput) {
+    const val = sortSel.value || "기본순";
+    sortInput.value = val;
+    sortInput.setAttribute("value", val);
+  }
+}
+
+function validateCoreCredits() {
+  const coreCreditsInput = document.querySelector('#core-credits-form input[name="core_credits"]');
+  if (!coreCreditsInput || coreCreditsInput.value === null || coreCreditsInput.value === undefined || coreCreditsInput.value.trim() === '') {
+    alert('핵심교양 학점을 설정해주세요.');
+    return false;
+  }
+  const val = parseInt(coreCreditsInput.value);
+  if (isNaN(val) || val < 0 || val > 9) {
+    alert('핵심교양 학점은 0~9 사이의 값이어야 합니다.');
+    return false;
+  }
+  updateHiddenInputs();
+  return true;
+}
+
+// 핵심교양 학점 설정 폼 업데이트 함수
+function updateCoreCreditsForm() {
+  // 핵심교양 학점 입력값 확인
+  const coreCreditsInput = document.querySelector('#core-credits-form input[name="core_credits"]');
+  if (!coreCreditsInput || coreCreditsInput.value === null || coreCreditsInput.value === undefined || coreCreditsInput.value.trim() === "") {
+    alert("핵심교양 학점을 입력해주세요.");
+    return false; // 폼 제출 방지
+  }
+  
+  const coreCreditsValue = parseInt(coreCreditsInput.value);
+  if (isNaN(coreCreditsValue) || coreCreditsValue < 0 || coreCreditsValue > 9) {
+    alert("핵심교양 학점은 0~9 사이의 값이어야 합니다.");
+    return false; // 폼 제출 방지
+  }
+  
+  // 선택된 과목 업데이트
+  const selectedStr = Array.from(selectedFids).join(",");
+  const selectedInput = document.getElementById("selected_fids_core_credits");
+  if (selectedInput) {
+    selectedInput.setAttribute("value", selectedStr);
+    selectedInput.value = selectedStr;
+  }
+  
+  // 필터 값 업데이트
+  const evalSel = document.getElementById("eval_choice");
+  const assignSel = document.getElementById("assign_choice");
+  const quizSel = document.getElementById("quiz_choice");
+  const creditSel = document.getElementById("credit_choice");
+  const webSel = document.getElementById("web_choice");
+  const sortSel = document.getElementById("sort_choice");
+  
+  const evalInput = document.getElementById("eval_choice_core_credits");
+  const assignInput = document.getElementById("assign_choice_core_credits");
+  const quizInput = document.getElementById("quiz_choice_core_credits");
+  const creditInput = document.getElementById("credit_choice_core_credits");
+  const webInput = document.getElementById("web_choice_core_credits");
+  const sortInput = document.getElementById("sort_choice_core_credits");
+  
+  if (evalSel && evalInput) {
+    const val = evalSel.value || "전체";
+    evalInput.value = val;
+    evalInput.setAttribute("value", val);
+  }
+  if (assignSel && assignInput) {
+    const val = assignSel.value || "전체";
+    assignInput.value = val;
+    assignInput.setAttribute("value", val);
+  }
+  if (quizSel && quizInput) {
+    const val = quizSel.value || "전체";
+    quizInput.value = val;
+    quizInput.setAttribute("value", val);
+  }
+  if (creditSel && creditInput) {
+    const val = creditSel.value || "전체";
+    creditInput.value = val;
+    creditInput.setAttribute("value", val);
+  }
+  if (webSel && webInput) {
+    const val = webSel.value || "전체";
+    webInput.value = val;
+    webInput.setAttribute("value", val);
+  }
+  if (sortSel && sortInput) {
+    const val = sortSel.value || "기본순";
+    sortInput.value = val;
+    sortInput.setAttribute("value", val);
+  }
+  
+  // 핵심교양 학점 설정값 업데이트 (BOOTSTRAP에 반영)
+  if (coreCreditsInput && coreCreditsInput.value) {
+    BOOTSTRAP.coreCredits = parseInt(coreCreditsInput.value) || null;
+  }
+  
+  return true; // 폼 제출 허용
+}
+
+// Timetable preview renderer
+let currentPreviewFileId = null; // 현재 미리보기 중인 file_id 추적
+
+function clearPreview() {
+  const layer = document.getElementById("preview-layer");
+  layer.innerHTML = "";
+  document.getElementById("web-lectures").innerHTML = "";
+  currentPreviewFileId = null;
+}
+
+function renderBlock(dayIdx, startSlot, endSlot, label) {
+  const layer = document.getElementById("preview-layer");
+  // 30분 단위 슬롯을 1시간 단위로 변환 (슬롯 1-2 = 1시간, 3-4 = 2시간 등)
+  // startSlot과 endSlot을 1시간 단위로 변환
+  const startHourSlot = Math.ceil((startSlot - 1) / 2) + 1; // 1-2 -> 1, 3-4 -> 2
+  const endHourSlot = Math.ceil((endSlot - 1) / 2) + 1;
+  const slotHeight = 24; // 1시간 단위 높이
+  const top = (startHourSlot - 1) * slotHeight;
+  const height = (endHourSlot - startHourSlot) * slotHeight;
+  const el = document.createElement("div");
+  el.className = "absolute rounded text-xs text-white p-0.5 overflow-hidden";
+  el.style.left = `calc((100%/6) * ${dayIdx+1})`;
+  el.style.width = "calc(100%/6)";
+  el.style.top = `${top}px`;
+  el.style.height = `${height}px`;
+  el.style.background = "rgba(16,185,129,0.9)";
+  el.style.fontSize = "10px";
+  el.textContent = label;
+  layer.appendChild(el);
+}
+
+function renderPreview(section) {
+  clearPreview();
+  if (section.is_web) {
+    const li = document.createElement("li");
+    li.textContent = `${section.course_name} (${section.course_id}) — 웹강의`;
+    document.getElementById("web-lectures").appendChild(li);
+  }
+  (section.meetings || []).forEach(mt => {
+    const [day, sslot, eslot, room] = mt;
+    renderBlock(day, sslot, eslot, `${section.course_name}`);
+  });
+}
+
+// previewSection function (for compatibility with planner 상수 version)
+function previewSection(fileId, meetings, credit, isWeb) {
+  clearPreview();
+  if (isWeb) {
+    const li = document.createElement("li");
+    li.textContent = `웹강의 (${fileId})`;
+    document.getElementById("web-lectures").appendChild(li);
+  }
+  (meetings || []).forEach(mt => {
+    const [day, sslot, eslot, room] = mt;
+    renderBlock(day, sslot, eslot, fileId);
+  });
+}
+
+// Fetch and render sections
+async function loadSections() {
+  // 기존 선택 상태 저장
+  const previousSelected = new Set(selectedFids);
+  
+  const evalVal = document.getElementById("eval_choice")?.value || "전체";
+  const assignVal = document.getElementById("assign_choice")?.value || "전체";
+  const quizVal = document.getElementById("quiz_choice")?.value || "전체";
+  const creditVal = document.getElementById("credit_choice")?.value || "전체";
+  const webVal = document.getElementById("web_choice")?.value || "전체";
+  const sortVal = document.getElementById("sort_choice")?.value || "기본순";
+
+  let courseIds = Array.isArray(BOOTSTRAP.courseIds) ? BOOTSTRAP.courseIds.filter(Boolean) : [];
+  if (courseIds.length === 0) {
+    document.getElementById("sections_container").innerHTML =
+      '<div class="p-3 bg-gray-50 border rounded">표시할 과목이 없습니다.</div>';
+    return;
+  }
+
+  const form = new FormData();
+  form.append("course_ids", courseIds.join(","));
+  form.append("eval_choice", evalVal);
+  form.append("assign_choice", assignVal);
+  form.append("quiz_choice", quizVal);
+  form.append("credit_choice", creditVal);
+  if (STEP === 6) {
+    form.append("web_choice", webVal);
+  }
+  form.append("sort_choice", sortVal);
+
+  const res = await fetch("/recommend/sections", {method: "POST", body: form});
+  const data = await res.json();
+  const sections = data.sections || [];
+
+  const cont = document.getElementById("sections_container");
+  cont.innerHTML = "";
+  if (sections.length === 0) {
+    cont.innerHTML = '<div class="p-3 bg-yellow-50 border rounded">조건에 맞는 분반이 없습니다.</div>';
+    return;
+  }
+
+  // 분반별로 별도 표시 (그룹화하지 않음)
+  sections.forEach(sec => {
+    const row = document.createElement("div");
+    row.className = "py-3 px-2 border-b last:border-b-0 flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3 border rounded-lg p-3 shadow-sm";
+    row.setAttribute("data-file-id", sec.file_id);
+    row.setAttribute("data-course-id", sec.course_id);
+    row.setAttribute("data-course-name", sec.course_name);
+    row.setAttribute("data-prof", sec.prof || "");
+    row.setAttribute("data-credit", sec.credit || "");
+
+    const left = document.createElement("div");
+    left.className = "flex-1";
+    
+    // 강의 검색 페이지 스타일: 학수번호와 과목명 먼저 표시
+    const header = document.createElement("div");
+    header.className = "flex items-center gap-3 mb-2";
+    
+    const toggleBtn = document.createElement("button");
+    toggleBtn.className = "text-gray-500 hover:text-gray-700 transition-transform cursor-pointer w-5 h-5 flex items-center justify-center flex-shrink-0";
+    toggleBtn.innerHTML = "▶";
+    toggleBtn.style.transform = "rotate(0deg)";
+    toggleBtn.style.transition = "transform 0.2s";
+    
+    // file_id에서 전체 학수번호 추출 (분반 포함: AIE1002.001.json -> AIE1002.001)
+    let fullCourseId = sec.course_id;
+    if (sec.file_id) {
+      // file_id는 "AIE1002.001.json" 형식
+      const parts = sec.file_id.split(".");
+      if (parts.length >= 2) {
+        // parts[0] = "AIE1002", parts[1] = "001", parts[2] = "json"
+        fullCourseId = `${parts[0]}.${parts[1]}`; // AIE1002.001
+      }
+    }
+    
+    const codeSpan = document.createElement("span");
+    codeSpan.className = "px-3 py-1 bg-gray-100 rounded text-sm font-mono";
+    codeSpan.textContent = fullCourseId;
+    
+    // 분반 정보 추출 (file_id에서 추출: AIE1002.001.json -> 001)
+    let sectionInfo = "";
+    if (sec.file_id) {
+      const parts = sec.file_id.split(".");
+      if (parts.length >= 2) {
+        // parts[0] = "AIE1002", parts[1] = "001", parts[2] = "json"
+        sectionInfo = `-${parts[1]}`; // "분반" 단어 제거
+      }
+    }
+    
+    const nameH3 = document.createElement("h3");
+    nameH3.className = "text-lg font-semibold flex-1";
+    nameH3.textContent = sectionInfo ? `${sec.course_name}${sectionInfo}` : sec.course_name;
+    
+    header.appendChild(toggleBtn);
+    header.appendChild(codeSpan);
+    header.appendChild(nameH3);
+      
+      // 상세 정보 (교수, 학점, 시간)
+      const detailsDiv = document.createElement("div");
+      detailsDiv.className = "text-sm text-gray-600 space-y-1 mb-2";
+      if (sec.prof) {
+        const profP = document.createElement("p");
+        profP.textContent = `교수: ${sec.prof}`;
+        detailsDiv.appendChild(profP);
+      }
+      if (sec.credit) {
+        const creditP = document.createElement("p");
+        creditP.textContent = `학점: ${sec.credit}`;
+        detailsDiv.appendChild(creditP);
+      }
+      
+      let __loc = "";
+      let __tstr = sec.is_web ? "웹강의" : "미정";
+      if (sec.time_raw) {
+        const __i = sec.time_raw.indexOf(":");
+        if (__i >= 0) {
+          __loc = sec.time_raw.slice(0, __i).trim();
+          __tstr = sec.time_raw.slice(__i + 1).trim();
+      } else {
+          __tstr = (sec.time_raw || "").trim();
+        }
+      }
+      if (__tstr) {
+        const timeP = document.createElement("p");
+        timeP.textContent = `시간: ${__loc ? `${__loc} / ` : ""}${__tstr}`;
+        detailsDiv.appendChild(timeP);
+      }
+      
+      // 요약본 컨테이너 (초기에는 숨김) - 강의계획서 다운로드와 요약보기 버튼 포함
+      const summaryDiv = document.createElement("div");
+      summaryDiv.className = "hidden mt-3 p-4 bg-gray-50 rounded-lg border border-gray-200";
+      summaryDiv.id = `summary-${sec.course_id}-${sec.file_id}`;
+      
+      // 강의계획서 다운로드 및 요약보기 버튼
+      const actionButtons = document.createElement("div");
+      actionButtons.className = "flex gap-2 mb-3";
+      const baseCode = sec.course_id.split('.')[0];
+      
+      // 강의계획서 다운로드 버튼
+      const pdfBtn = document.createElement("a");
+      pdfBtn.href = `/api/pdf/subject/${baseCode}`;
+      pdfBtn.target = "_blank";
+      pdfBtn.className = "px-3 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700";
+      pdfBtn.textContent = "강의계획서";
+      
+      // 요약보기 버튼
+      const summaryBtn = document.createElement("a");
+      summaryBtn.href = `/lecture-search/view-summary?code=${sec.course_id}&from=recommend`;
+      summaryBtn.className = "px-3 py-2 bg-gray-600 text-white rounded text-sm hover:bg-gray-700";
+      summaryBtn.textContent = "요약보기";
+      
+      actionButtons.appendChild(pdfBtn);
+      actionButtons.appendChild(summaryBtn);
+      
+      // 요약본 내용 영역은 표시하지 않음 (버튼만 표시)
+      
+      summaryDiv.appendChild(actionButtons);
+      
+      // 토글 버튼 클릭 이벤트
+      let isExpanded = false;
+      toggleBtn.addEventListener("click", async (e) => {
+        e.preventDefault();
+        isExpanded = !isExpanded;
+        
+        if (isExpanded) {
+          toggleBtn.style.transform = "rotate(90deg)";
+          summaryDiv.classList.remove("hidden");
+        } else {
+          toggleBtn.style.transform = "rotate(0deg)";
+          summaryDiv.classList.add("hidden");
+        }
+      });
+      
+      // 시간 미리보기와 선택 버튼을 고정 위치에 배치 (상단에 위치)
+      const right = document.createElement("div");
+      right.className = "flex items-center gap-2 flex-shrink-0";
+
+      const previewBtn = document.createElement("button");
+      previewBtn.className = "px-3 py-1 rounded border text-sm";
+      previewBtn.textContent = "시간 미리보기";
+      previewBtn.addEventListener("click", (e)=>{
+        e.preventDefault();
+        // 같은 버튼을 다시 누르면 미리보기 제거
+        if (currentPreviewFileId === sec.file_id) {
+          clearPreview();
+        } else {
+          renderPreview(sec);
+          currentPreviewFileId = sec.file_id;
+        }
+      });
+
+      const pickBtn = document.createElement("button");
+      function refreshPickBtn() {
+        const picked = selectedFids.has(sec.file_id);
+        pickBtn.textContent = picked ? "선택됨" : "선택";
+        pickBtn.className = picked ? "px-3 py-1 rounded bg-blue-600 text-white text-sm" : "px-3 py-1 rounded border text-sm bg-white";
+      }
+      refreshPickBtn();
+      pickBtn.addEventListener("click", (e)=>{
+        e.preventDefault();
+        if (selectedFids.has(sec.file_id)) {
+          selectedFids.delete(sec.file_id);
+          // 선택 순서 배열에서도 제거
+          const index = selectedFidsOrder.indexOf(sec.file_id);
+          if (index > -1) {
+            selectedFidsOrder.splice(index, 1);
+          }
+        } else {
+          selectedFids.add(sec.file_id);
+          // 선택 순서 배열에 추가 (마지막에 추가하여 선택한 순서 유지)
+          if (!selectedFidsOrder.includes(sec.file_id)) {
+            selectedFidsOrder.push(sec.file_id);
+          }
+        }
+        refreshPickBtn();
+        updateHiddenInputs();
+        updateSelectedList();
+      });
+
+      right.appendChild(previewBtn);
+      right.appendChild(pickBtn);
+
+      // 헤더에 버튼 추가 (상단 고정)
+      header.appendChild(toggleBtn);
+      header.appendChild(codeSpan);
+      header.appendChild(nameH3);
+      header.appendChild(right);
+      
+      left.appendChild(header);
+      left.appendChild(detailsDiv);
+      left.appendChild(summaryDiv);
+      
+      row.appendChild(left);
+      cont.appendChild(row);
+  });
+  
+  // 기존 선택 상태 복원
+  previousSelected.forEach(fileId => {
+    // selectedFids에 추가 (없으면 추가) - DOM에 없어도 선택 상태 유지
+    if (!selectedFids.has(fileId)) {
+      selectedFids.add(fileId);
+      // 선택 순서 배열에도 추가 (없는 경우에만)
+      if (!selectedFidsOrder.includes(fileId)) {
+        selectedFidsOrder.push(fileId);
+      }
+    }
+    
+    const row = cont.querySelector(`[data-file-id="${fileId}"]`);
+    if (row) {
+      const pickBtn = row.querySelector('button[class*="선택"]');
+      if (pickBtn) {
+        pickBtn.textContent = "선택됨";
+        pickBtn.className = "px-3 py-1 rounded bg-blue-600 text-white text-sm";
+      }
+    }
+  });
+  
+  // 선택 리스트 업데이트 (지연 호출로 DOM 렌더링 완료 후 업데이트)
+  // 일반교양 스텝에서는 필터 변경과 관계없이 항상 선택 리스트 표시
+  setTimeout(() => {
+    updateSelectedList();
+    // 선택 리스트가 항상 보이도록 강제 표시
+    const listContainer = document.getElementById('selected-courses-list');
+    if (listContainer && selectedFids.size > 0) {
+      listContainer.style.display = 'block';
+    }
+    // 검색 필터 다시 적용
+    if (typeof searchCourses === 'function') {
+      searchCourses();
+    }
+  }, 100);
+}
+
+// === Step5: Core categories (핵심교양1~6) toggle UI ===
+async function loadCoreCategory(cat) {
+  // 기존 선택 상태 저장
+  const previousSelected = new Set(selectedFids);
+  
+  const evalVal = document.getElementById("eval_choice")?.value || "전체";
+  const assignVal = document.getElementById("assign_choice")?.value || "전체";
+  const quizVal = document.getElementById("quiz_choice")?.value || "전체";
+  const creditVal = document.getElementById("credit_choice")?.value || "전체";
+  const webVal = document.getElementById("web_choice")?.value || "전체";
+  const sortVal = document.getElementById("sort_choice")?.value || "기본순";
+
+  const map = BOOTSTRAP.coreMap || {};
+  const ids = (map[String(cat)] || map[cat] || []).filter(Boolean);
+  const body = document.getElementById(`core-body-${cat}`);
+  if (!body) return;
+  body.innerHTML = '<div class="p-2 text-sm text-gray-500">불러오는 중...</div>';
+
+  if (ids.length === 0) {
+    body.innerHTML = '<div class="p-3 bg-gray-50 border rounded">표시할 과목이 없습니다.</div>';
+          return;
+        }
+
+  const form = new FormData();
+  form.append("course_ids", ids.join(","));
+  form.append("eval_choice", evalVal);
+  form.append("assign_choice", assignVal);
+  form.append("quiz_choice", quizVal);
+  form.append("credit_choice", creditVal);
+  if (STEP === 5) {
+    form.append("web_choice", webVal);
+  }
+  form.append("sort_choice", sortVal);
+
+  const res = await fetch("/recommend/sections", {method: "POST", body: form});
+  const data = await res.json();
+  const sections = Array.isArray(data.sections) ? data.sections : [];
+
+  if (sections.length === 0) {
+    body.innerHTML = '<div class="p-3 bg-yellow-50 border rounded">조건에 맞는 분반이 없습니다.</div>';
+          return;
+        }
+
+  // 분반별로 별도 표시 (그룹화하지 않음)
+  const cont = document.createElement("div");
+  cont.className = "space-y-3";
+
+  sections.forEach(sec => {
+    const row = document.createElement("div");
+    row.className = "py-3 px-2 border-b last:border-b-0 flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3 border rounded-lg p-3 shadow-sm";
+    row.setAttribute("data-file-id", sec.file_id);
+    row.setAttribute("data-course-id", sec.course_id);
+    row.setAttribute("data-course-name", sec.course_name);
+    row.setAttribute("data-prof", sec.prof || "");
+    row.setAttribute("data-credit", sec.credit || "");
+
+      const left = document.createElement("div");
+      left.className = "flex-1";
+      
+      // 강의 검색 페이지 스타일: 학수번호와 과목명 먼저 표시
+      const header = document.createElement("div");
+      header.className = "flex items-center gap-3 mb-2";
+      
+      const toggleBtn = document.createElement("button");
+      toggleBtn.className = "text-gray-500 hover:text-gray-700 transition-transform cursor-pointer w-5 h-5 flex items-center justify-center flex-shrink-0";
+      toggleBtn.innerHTML = "▶";
+      toggleBtn.style.transform = "rotate(0deg)";
+      toggleBtn.style.transition = "transform 0.2s";
+      
+      // file_id에서 전체 학수번호 추출 (분반 포함: AIE1002.001.json -> AIE1002.001)
+      let fullCourseId = sec.course_id;
+      if (sec.file_id) {
+        // file_id는 "AIE1002.001.json" 형식
+        const parts = sec.file_id.split(".");
+        if (parts.length >= 2) {
+          // parts[0] = "AIE1002", parts[1] = "001", parts[2] = "json"
+          fullCourseId = `${parts[0]}.${parts[1]}`; // AIE1002.001
+        }
+      }
+      
+      const codeSpan = document.createElement("span");
+      codeSpan.className = "px-3 py-1 bg-gray-100 rounded text-sm font-mono";
+      codeSpan.textContent = fullCourseId;
+      
+      // 분반 정보 추출 (file_id에서 추출: AIE1002.001.json -> 001)
+      let sectionInfo = "";
+      if (sec.file_id) {
+        const parts = sec.file_id.split(".");
+        if (parts.length >= 2) {
+          // parts[0] = "AIE1002", parts[1] = "001", parts[2] = "json"
+          sectionInfo = `-${parts[1]}`; // "분반" 단어 제거
+        }
+      }
+      
+      const nameH3 = document.createElement("h3");
+      nameH3.className = "text-lg font-semibold flex-1";
+      nameH3.textContent = sectionInfo ? `${sec.course_name}${sectionInfo}` : sec.course_name;
+      
+      // 시간 미리보기와 선택 버튼을 고정 위치에 배치 (상단에 위치)
+      const right = document.createElement("div");
+      right.className = "flex items-center gap-2 flex-shrink-0";
+
+      const previewBtn = document.createElement("button");
+      previewBtn.className = "px-3 py-1 rounded border text-sm";
+      previewBtn.textContent = "시간 미리보기";
+      previewBtn.addEventListener("click", (e)=>{
+        e.preventDefault();
+        // 같은 버튼을 다시 누르면 미리보기 제거
+        if (currentPreviewFileId === sec.file_id) {
+          clearPreview();
+        } else {
+          previewSection(sec.file_id, sec.meetings, sec.credit, sec.is_web);
+          currentPreviewFileId = sec.file_id;
+        }
+      });
+
+      const pickBtn = document.createElement("button");
+      function refreshPickBtn() {
+        const picked = selectedFids.has(sec.file_id);
+        pickBtn.textContent = picked ? "선택됨" : "선택";
+        pickBtn.className = picked ? "px-3 py-1 rounded bg-blue-600 text-white text-sm" : "px-3 py-1 rounded border text-sm bg-white";
+      }
+      refreshPickBtn();
+      pickBtn.addEventListener("click", (e)=>{
+        e.preventDefault();
+        if (selectedFids.has(sec.file_id)) {
+          selectedFids.delete(sec.file_id);
+          // 선택 순서 배열에서도 제거
+          const index = selectedFidsOrder.indexOf(sec.file_id);
+          if (index > -1) {
+            selectedFidsOrder.splice(index, 1);
+          }
+        } else {
+          selectedFids.add(sec.file_id);
+          // 선택 순서 배열에 추가 (마지막에 추가하여 선택한 순서 유지)
+          if (!selectedFidsOrder.includes(sec.file_id)) {
+            selectedFidsOrder.push(sec.file_id);
+          }
+        }
+        refreshPickBtn();
+        updateHiddenInputs();
+        updateSelectedList();
+      });
+
+      right.appendChild(previewBtn);
+      right.appendChild(pickBtn);
+      
+      // 헤더에 버튼 추가 (상단 고정)
+      header.appendChild(toggleBtn);
+      header.appendChild(codeSpan);
+      header.appendChild(nameH3);
+      header.appendChild(right);
+      
+      // 상세 정보 (교수, 학점, 시간)
+      const detailsDiv = document.createElement("div");
+      detailsDiv.className = "text-sm text-gray-600 space-y-1 mb-2";
+      if (sec.prof) {
+        const profP = document.createElement("p");
+        profP.textContent = `교수: ${sec.prof}`;
+        detailsDiv.appendChild(profP);
+      }
+      if (sec.credit) {
+        const creditP = document.createElement("p");
+        creditP.textContent = `학점: ${sec.credit}`;
+        detailsDiv.appendChild(creditP);
+      }
+      
+      let loc = "";
+      let tstr = sec.is_web ? "웹강의" : "미정";
+      if (sec.time_raw) {
+        const i = sec.time_raw.indexOf(":");
+        if (i >= 0) {
+          loc = sec.time_raw.slice(0, i).trim();
+          tstr = sec.time_raw.slice(i + 1).trim();
+        } else {
+          tstr = sec.time_raw.trim();
+        }
+      }
+      if (tstr) {
+        const timeP = document.createElement("p");
+        timeP.textContent = `시간: ${loc ? `${loc} / ` : ""}${tstr}`;
+        detailsDiv.appendChild(timeP);
+      }
+      
+      // 요약본 컨테이너 (초기에는 숨김) - 강의계획서 다운로드와 요약보기 버튼 포함
+      const summaryDiv = document.createElement("div");
+      summaryDiv.className = "hidden mt-3 p-4 bg-gray-50 rounded-lg border border-gray-200";
+      summaryDiv.id = `summary-${sec.course_id}-${sec.file_id}`;
+      
+      // 강의계획서 다운로드 및 요약보기 버튼
+      const actionButtons = document.createElement("div");
+      actionButtons.className = "flex gap-2 mb-3";
+      const baseCode = sec.course_id.split('.')[0];
+      
+      // 강의계획서 다운로드 버튼
+      const pdfBtn = document.createElement("a");
+      pdfBtn.href = `/api/pdf/subject/${baseCode}`;
+      pdfBtn.target = "_blank";
+      pdfBtn.className = "px-3 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700";
+      pdfBtn.textContent = "강의계획서";
+      
+      // 요약보기 버튼
+      const summaryBtn = document.createElement("a");
+      summaryBtn.href = `/lecture-search/view-summary?code=${sec.course_id}&from=recommend`;
+      summaryBtn.className = "px-3 py-2 bg-gray-600 text-white rounded text-sm hover:bg-gray-700";
+      summaryBtn.textContent = "요약보기";
+      
+      actionButtons.appendChild(pdfBtn);
+      actionButtons.appendChild(summaryBtn);
+      
+      // 요약본 내용 영역은 표시하지 않음 (버튼만 표시)
+      
+      summaryDiv.appendChild(actionButtons);
+      
+      // 토글 버튼 클릭 이벤트
+      let isExpanded = false;
+      toggleBtn.addEventListener("click", async (e) => {
+        e.preventDefault();
+        isExpanded = !isExpanded;
+        
+        if (isExpanded) {
+          toggleBtn.style.transform = "rotate(90deg)";
+          summaryDiv.classList.remove("hidden");
+        } else {
+          toggleBtn.style.transform = "rotate(0deg)";
+          summaryDiv.classList.add("hidden");
+        }
+      });
+      
+      left.appendChild(header);
+      left.appendChild(detailsDiv);
+      left.appendChild(summaryDiv);
+
+      row.appendChild(left);
+      cont.appendChild(row);
+  });
+
+  body.innerHTML = "";
+  body.appendChild(cont);
+  
+  // 기존 선택 상태 복원
+  previousSelected.forEach(fileId => {
+    // selectedFids에 추가 (없으면 추가) - DOM에 없어도 선택 상태 유지
+    if (!selectedFids.has(fileId)) {
+      selectedFids.add(fileId);
+      // 선택 순서 배열에도 추가 (없는 경우에만)
+      if (!selectedFidsOrder.includes(fileId)) {
+        selectedFidsOrder.push(fileId);
+      }
+    }
+    
+    const row = body.querySelector(`[data-file-id="${fileId}"]`);
+    if (row) {
+      const pickBtn = row.querySelector('button[class*="선택"]');
+      if (pickBtn) {
+        pickBtn.textContent = "선택됨";
+        pickBtn.className = "px-3 py-1 rounded bg-blue-600 text-white text-sm";
+      }
+    }
+  });
+  
+  // 선택 리스트 업데이트 (카테고리 로드 완료 후)
+  setTimeout(() => {
+    updateSelectedList();
+    // 검색 필터 다시 적용
+    if (typeof searchCourses === 'function') {
+      searchCourses();
+    }
+  }, 100);
+}
+
+async function updateCategoryCount(cat, codes, meta) {
+  // 필터 적용 후의 과목 수 계산
+  const evalVal = document.getElementById("eval_choice")?.value || "전체";
+  const assignVal = document.getElementById("assign_choice")?.value || "전체";
+  const quizVal = document.getElementById("quiz_choice")?.value || "전체";
+  const creditVal = document.getElementById("credit_choice")?.value || "전체";
+  const webVal = document.getElementById("web_choice")?.value || "전체";
+  const sortVal = document.getElementById("sort_choice")?.value || "기본순";
+
+  if (codes.length === 0) {
+    meta.textContent = "0과목";
+            return;
+          }
+
+  const form = new FormData();
+  form.append("course_ids", codes.join(","));
+  form.append("eval_choice", evalVal);
+  form.append("assign_choice", assignVal);
+  form.append("quiz_choice", quizVal);
+  form.append("credit_choice", creditVal);
+  if (STEP === 5) {
+    form.append("web_choice", webVal);
+  }
+  form.append("sort_choice", sortVal);
+
+  try {
+    const res = await fetch("/recommend/sections", {method: "POST", body: form});
+    const data = await res.json();
+    const sections = Array.isArray(data.sections) ? data.sections : [];
+    meta.textContent = `${sections.length}과목`;
+  } catch (error) {
+    meta.textContent = `${codes.length}과목`;
+  }
+}
+
+function renderCoreCategories() {
+  const cont = document.getElementById("sections_container");
+  if (!cont) return;
+  const map = BOOTSTRAP.coreMap || {};
+  cont.innerHTML = "";
+
+  const cats = ['1','2','3','4','5','6','창의','SW.AI'];
+  cats.forEach(cat => {
+    const codes = (map[String(cat)] || map[cat] || []).filter(Boolean);
+    const card = document.createElement("div");
+    card.className = "border rounded-xl";
+
+    const header = document.createElement("div");
+    header.className = "flex items-center justify-between p-3 bg-gray-50 rounded-t-xl";
+    const title = document.createElement("div");
+    title.className = "font-semibold";
+    const label = (['1','2','3','4','5','6'].includes(cat)) ? `핵심교양${cat}` : cat;
+    title.textContent = label;
+    const toggle = document.createElement("button");
+    toggle.id = `core-toggle-${cat}`;
+    toggle.className = "text-sm px-2 py-1 rounded border";
+    toggle.textContent = "▽";
+
+    header.appendChild(title);
+    const meta = document.createElement("div");
+    meta.className = "text-xs text-gray-500 mr-2";
+    meta.id = `core-meta-${cat}`;
+    meta.textContent = `${codes.length}과목`;
+    // 필터 적용 후의 과목 수로 업데이트
+    updateCategoryCount(cat, codes, meta);
+    header.appendChild(meta);
+    header.appendChild(toggle);
+
+    const body = document.createElement("div");
+    body.id = `core-body-${cat}`;
+    body.className = "p-3 hidden";
+
+    toggle.addEventListener("click", (e)=>{
+      e.preventDefault();
+      const isHidden = body.classList.contains("hidden");
+      if (isHidden) {
+        body.classList.remove("hidden");
+        toggle.textContent = "△";
+        loadCoreCategory(cat);
+      } else {
+        body.classList.add("hidden");
+        toggle.textContent = "▽";
+      }
+    });
+
+    card.appendChild(header);
+    card.appendChild(body);
+    cont.appendChild(card);
+  });
+}
+
+// 과목 검색 기능
+function searchCourses() {
+  const searchInput = document.getElementById("course_search");
+  if (!searchInput) return;
+  
+  const searchTerm = searchInput.value.toLowerCase().trim();
+  let visibleCount = 0;
+  let totalCount = 0;
+  
+  if (STEP === 5) {
+    // Step 5: 핵심교양 - 모든 카테고리의 과목 검색
+    const cats = ['1','2','3','4','5','6','창의','SW.AI'];
+    cats.forEach(cat => {
+      const body = document.getElementById(`core-body-${cat}`);
+      if (body) {
+        const rows = body.querySelectorAll('[data-course-id]');
+        rows.forEach(row => {
+          totalCount++;
+          const courseId = (row.dataset.courseId || '').toLowerCase();
+          const courseName = (row.dataset.courseName || '').toLowerCase();
+          const prof = (row.dataset.prof || '').toLowerCase();
+          
+          if (searchTerm === '' || 
+              courseId.includes(searchTerm) || 
+              courseName.includes(searchTerm) || 
+              prof.includes(searchTerm)) {
+            row.style.display = '';
+            visibleCount++;
+          } else {
+            row.style.display = 'none';
+          }
+        });
+      }
+    });
+  } else {
+    // Step 2, 3, 4, 6: 일반 과목 목록 검색
+    const container = document.getElementById('sections_container');
+    if (container) {
+      const rows = container.querySelectorAll('[data-course-id]');
+      rows.forEach(row => {
+        totalCount++;
+        const courseId = (row.dataset.courseId || '').toLowerCase();
+        const courseName = (row.dataset.courseName || '').toLowerCase();
+        const prof = (row.dataset.prof || '').toLowerCase();
+        
+        if (searchTerm === '' || 
+            courseId.includes(searchTerm) || 
+            courseName.includes(searchTerm) || 
+            prof.includes(searchTerm)) {
+          row.style.display = '';
+          visibleCount++;
+        } else {
+          row.style.display = 'none';
+        }
+      });
+    }
+  }
+  
+  // 검색 결과 개수 표시
+  const resultCount = document.getElementById('search_result_count');
+  if (resultCount) {
+    if (searchTerm === '') {
+      resultCount.textContent = `전체 ${totalCount}개 과목`;
+    } else {
+      resultCount.textContent = `${visibleCount}개 과목 찾음 (전체 ${totalCount}개 중)`;
+    }
+  }
+}
+
+// 검색 입력창 이벤트 리스너
+if ([2,3,4,5,6].includes(STEP)) {
+  const searchInput = document.getElementById("course_search");
+  const clearBtn = document.getElementById("clear_search");
+  
+  if (searchInput) {
+    searchInput.addEventListener("input", searchCourses);
+    // 엔터키 방지 (폼 제출 방지)
+    searchInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+      }
+    });
+    // 초기 검색 결과 개수 표시
+    setTimeout(() => {
+      searchCourses();
+    }, 500);
+  }
+  
+  // 검색 초기화 버튼
+  if (clearBtn && searchInput) {
+    clearBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      searchInput.value = '';
+      searchCourses();
+      searchInput.focus();
+    });
+  }
+}
+
+// 선택 초기화: 현재 스텝의 선택만 초기화
+document.getElementById("reset_btn")?.addEventListener("click", async (e)=>{
+  e.preventDefault();
+  selectedFids.clear();
+  selectedFidsOrder.length = 0; // 선택 순서 배열도 초기화
+  updateHiddenInputs();
+  
+  // 서버에 선택 초기화 반영 (빈 문자열로 전송)
+  const form = new FormData();
+  form.append("step", STEP);
+  form.append("semester", BOOTSTRAP.semester);
+  form.append("action", "save"); // 선택 초기화를 저장 액션으로 처리
+  form.append("selected_fids", ""); // 빈 문자열로 전송하여 선택 초기화
+  
+  // 필터 값도 포함
+  const evalVal = document.getElementById("eval_choice")?.value || "전체";
+  const assignVal = document.getElementById("assign_choice")?.value || "전체";
+  const quizVal = document.getElementById("quiz_choice")?.value || "전체";
+  const creditVal = document.getElementById("credit_choice")?.value || "전체";
+  const sortVal = document.getElementById("sort_choice")?.value || "기본순";
+  form.append("eval_choice", evalVal);
+  form.append("assign_choice", assignVal);
+  form.append("quiz_choice", quizVal);
+  form.append("credit_choice", creditVal);
+  form.append("sort_choice", sortVal);
+  
+  // Step 5인 경우 핵심교양 학점도 포함
+  if (STEP === 5) {
+    const coreCreditsInput = document.querySelector('#core-credits-form input[name="core_credits"]');
+    if (coreCreditsInput) {
+      form.append("core_credits", coreCreditsInput.value || "");
+    }
+  }
+  
+  try {
+    const res = await fetch("/recommend/step", {method: "POST", body: form});
+    if (res.ok) {
+      // 페이지 새로고침하여 서버 상태 반영
+      window.location.href = `/recommend?step=${STEP}&semester=${BOOTSTRAP.semester}`;
+    }
+  } catch (error) {
+    console.error("선택 초기화 오류:", error);
+    // 오류 발생 시에도 UI는 업데이트
+    updateSelectedList();
+    if ([2,3,4,6].includes(STEP)) {
+      loadSections();
+    } else if (STEP === 5) {
+      const cats = ['1','2','3','4','5','6','창의','SW.AI'];
+      cats.forEach(cat => {
+        const body = document.getElementById(`core-body-${cat}`);
+        if (body && !body.classList.contains("hidden")) {
+          loadCoreCategory(cat);
+        }
+      });
+    }
+  }
+});
+
+// 선택한 과목 리스트 업데이트 함수
+async function updateSelectedList() {
+  const stepNamesMap = {2: "전공필수", 3: "전공선택", 4: "기초/중점 교양", 5: "핵심교양", 6: "일반교양"};
+  const stepName = stepNamesMap[STEP];
+  if (!stepName) return;
+  
+  // 선택한 과목 정보를 저장할 Map (file_id를 키로 사용)
+  const courseInfoMap = new Map();
+  
+  // 1. 우선 서버 데이터에서 선택된 항목 정보 가져오기 (필터와 관계없이 모든 선택된 항목)
+  const serverSelected = BOOTSTRAP.selectedCoursesByStep?.[stepName] || [];
+  serverSelected.forEach(course => {
+    const fileId = course.file_id;
+    if (selectedFids.has(fileId)) {
+      courseInfoMap.set(fileId, {
+        course_id: course.course_id || '',
+        course_name: course.course_name || '',
+        prof: course.prof || '',
+        credit: course.credit || ''
+      });
+    }
+  });
+  
+  // 2. 서버 데이터에 없는 항목은 DOM에서 찾기 (현재 필터에 맞는 항목만 DOM에 있을 수 있음)
+  const missingFromServer = Array.from(selectedFids).filter(fid => !courseInfoMap.has(fid));
+  if (missingFromServer.length > 0) {
+    let selector = '';
+    if (STEP === 5) {
+      // Step 5: 모든 core-body 내부의 요소 찾기 (숨겨진 카테고리도 포함)
+      selector = '[id^="core-body-"] [data-file-id]';
+    } else {
+      // Step 2, 3, 4, 6: sections_container 내부의 요소 찾기
+      selector = '#sections_container [data-file-id]';
+    }
+    
+    document.querySelectorAll(selector).forEach(row => {
+      const fileId = row.dataset.fileId;
+      if (selectedFids.has(fileId) && !courseInfoMap.has(fileId)) {
+        courseInfoMap.set(fileId, {
+          course_id: row.dataset.courseId || '',
+          course_name: row.dataset.courseName || '',
+          prof: row.dataset.prof || '',
+          credit: row.dataset.credit || ''
+        });
+      }
+    });
+  }
+  
+  // 3. 서버 데이터와 DOM에서 모두 찾지 못한 항목은 file_id로 직접 정보 가져오기 (AJAX)
+  const missingFileIds = Array.from(selectedFids).filter(fid => !courseInfoMap.has(fid));
+  if (missingFileIds.length > 0) {
+    // 각 file_id에서 course_id 추출 (예: "AIE1002.001.json" -> "AIE1002.001")
+    // file_id 형식: "AIE1002.001.json" 또는 "AIE1002.001" 등
+    const courseIds = new Set();
+    missingFileIds.forEach(fileId => {
+      // ".json" 확장자 제거
+      const withoutExt = fileId.replace(/\.json$/, '');
+      const parts = withoutExt.split('.');
+      if (parts.length >= 2) {
+        // "AIE1002.001" 형식으로 course_id 생성
+        const courseId = `${parts[0]}.${parts[1]}`;
+        courseIds.add(courseId);
+      } else if (parts.length === 1) {
+        // "AIE1002" 형식만 있는 경우
+        courseIds.add(parts[0]);
+      }
+    });
+    
+    if (courseIds.size > 0) {
+      try {
+        const form = new FormData();
+        form.append("course_ids", Array.from(courseIds).join(","));
+        form.append("eval_choice", "전체");
+        form.append("assign_choice", "전체");
+        form.append("quiz_choice", "전체");
+        form.append("credit_choice", "전체");
+        form.append("web_choice", "전체");
+        form.append("sort_choice", "기본순");
+        
+        const res = await fetch("/recommend/sections", {method: "POST", body: form});
+        const data = await res.json();
+        const sections = Array.isArray(data.sections) ? data.sections : [];
+        
+        sections.forEach(sec => {
+          if (selectedFids.has(sec.file_id) && !courseInfoMap.has(sec.file_id)) {
+            courseInfoMap.set(sec.file_id, {
+              course_id: sec.course_id || '',
+              course_name: sec.course_name || '',
+              prof: sec.prof || '',
+              credit: sec.credit || ''
+            });
+          }
+        });
+      } catch (error) {
+        console.error("선택된 항목 정보 가져오기 실패:", error);
+      }
+    }
+  }
+  
+  // 4. 선택한 순서대로 정렬된 배열 생성 (selectedFidsOrder 순서 유지)
+  const selectedCourses = [];
+  selectedFidsOrder.forEach(fileId => {
+    if (selectedFids.has(fileId) && courseInfoMap.has(fileId)) {
+      selectedCourses.push(courseInfoMap.get(fileId));
+    }
+  });
+  
+  // 선택한 과목 리스트 컨테이너 찾기
+  const listContainer = document.getElementById('selected-courses-list');
+  if (listContainer) {
+    if (selectedFids.size === 0) {
+      listContainer.style.display = 'none';
+    } else {
+      // 항상 표시 (필터 변경과 관계없이)
+      listContainer.style.display = 'block';
+      // 선택된 항목 수는 selectedFids.size를 기준으로 표시
+      const count = selectedFids.size;
+      
+      // Step 5에서 핵심교양 학점 검증
+      let warningMessage = '';
+      if (STEP === 5 && BOOTSTRAP.coreCredits && BOOTSTRAP.coreCredits > 0) {
+        const coreCreditsTarget = BOOTSTRAP.coreCredits;
+        let totalCoreCredits = 0;
+        selectedCourses.forEach(c => {
+          const credit = parseInt(c.credit) || 0;
+          totalCoreCredits += credit;
+        });
+        
+        // 선택한 과목들의 학점 리스트
+        const selectedCredits = selectedCourses.map(c => parseInt(c.credit) || 0).filter(c => c > 0);
+        
+        if (selectedCredits.length > 0) {
+          // 선택한 과목들의 최대 학점 합계 (모든 과목을 선택한 경우)
+          const maxPossibleCredits = selectedCredits.reduce((sum, credit) => sum + credit, 0);
+          
+          // 선택한 학점이 설정한 학점보다 적은 경우
+          if (totalCoreCredits < coreCreditsTarget) {
+            warningMessage = `
+              <div class="mt-3 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+                <strong>⚠️ 경고:</strong> 설정한 핵심교양 학점(${coreCreditsTarget}학점)보다 적은 학점을 선택했습니다. 
+                최소 ${coreCreditsTarget}학점 이상은 선택해야 합니다. (현재 선택: ${totalCoreCredits}학점)
+              </div>
+            `;
+          } else if (coreCreditsTarget > maxPossibleCredits) {
+            // 설정한 학점이 선택한 과목들의 최대 합계를 초과하면 경고
+            warningMessage = `
+              <div class="mt-3 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+                <strong>⚠️ 경고:</strong> 선택한 핵심교양 과목들의 총 학점(${maxPossibleCredits}학점)으로는 설정한 학점(${coreCreditsTarget}학점)을 달성할 수 없습니다. 
+                더 많은 과목을 선택하거나 학점 설정값을 조정해주세요.
+              </div>
+            `;
+          } else if (coreCreditsTarget <= maxPossibleCredits) {
+            // 선택한 과목들의 조합으로 설정한 학점을 만들 수 있는지 확인 (부분집합 합 문제)
+            // 동적 프로그래밍을 사용하여 가능한 조합 확인
+            function canMakeTarget(credits, target) {
+              if (target === 0) return true;
+              if (credits.length === 0 || target < 0) return false;
+              
+              // DP 배열: dp[i] = i학점을 만들 수 있는지 여부
+              const dp = new Array(target + 1).fill(false);
+              dp[0] = true; // 0학점은 항상 가능
+              
+              for (const credit of credits) {
+                for (let i = target; i >= credit; i--) {
+                  if (dp[i - credit]) {
+                    dp[i] = true;
+                  }
+                }
+              }
+              
+              return dp[target];
+            }
+            
+            // 선택한 과목들의 조합으로 목표 학점을 만들 수 있는지 확인
+            if (!canMakeTarget(selectedCredits, coreCreditsTarget)) {
+              // 가능한 학점 조합 목록 생성 (동적 프로그래밍 사용)
+              const possibleCredits = new Set([0]);
+              for (const credit of selectedCredits) {
+                const newPossible = new Set(possibleCredits);
+                for (const sum of possibleCredits) {
+                  newPossible.add(sum + credit);
+                }
+                possibleCredits.clear();
+                newPossible.forEach(s => possibleCredits.add(s));
+              }
+              const sortedPossible = Array.from(possibleCredits).filter(s => s > 0 && s <= maxPossibleCredits).sort((a, b) => a - b);
+              const possibleList = sortedPossible.length > 0 ? sortedPossible.join(', ') : '없음';
+              
+              warningMessage = `
+                <div class="mt-3 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+                  <strong>⚠️ 경고:</strong> 선택한 핵심교양 과목들의 조합으로는 설정한 학점(${coreCreditsTarget}학점)을 만들 수 없습니다. 
+                  선택한 과목들로 만들 수 있는 학점 조합: ${possibleList}학점
+                </div>
+              `;
+            }
+          }
+        }
+      }
+      
+      const listHtml = `
+        <div class="font-semibold text-sm mb-2">${stepName} 선택한 과목 (${count}개):</div>
+        <div class="space-y-1">
+          ${selectedCourses.length > 0 
+            ? selectedCourses.map(c => `<div class="text-sm text-gray-700">${c.course_id} — ${c.course_name} (${c.prof}) — ${c.credit}학점</div>`).join('')
+            : selectedFids.size > 0
+              ? `<div class="text-sm text-gray-500">선택된 항목이 있지만 세부 정보를 불러오는 중입니다... (${count}개 선택됨)</div>`
+              : ''}
+        </div>
+        ${warningMessage}
+      `;
+      listContainer.innerHTML = listHtml;
+      
+      // 일반교양 스텝에서는 필터 변경과 관계없이 항상 표시 (강제)
+      if (STEP === 6 && selectedFids.size > 0) {
+        listContainer.style.display = 'block';
+      }
+    }
+  }
+}
+
+// 선택 버튼 클릭 시 리스트 업데이트
+function attachListUpdateListeners() {
+  document.querySelectorAll('#sections_container button').forEach(btn => {
+    if (btn.textContent.includes('선택')) {
+      btn.addEventListener('click', () => {
+        setTimeout(updateSelectedList, 100);
+      });
+    }
+  });
+}
+
+["eval_choice","assign_choice","quiz_choice","credit_choice","web_choice","sort_choice"].forEach(id=>{
+  document.getElementById(id)?.addEventListener("change", ()=>{
+    // 필터 변경 전에 선택 상태를 서버에 저장 (필터 변경 후에도 선택 상태 유지)
+    updateHiddenInputs();
+    
+    if (STEP === 5) {
+      const cats = ['1','2','3','4','5','6','창의','SW.AI'];
+      cats.forEach(cat => {
+        const body = document.getElementById(`core-body-${cat}`);
+        if (body && !body.classList.contains("hidden")) {
+          loadCoreCategory(cat);
+        }
+        // 필터 변경 시 과목 수 업데이트
+        const meta = document.getElementById(`core-meta-${cat}`);
+        if (meta) {
+          const map = BOOTSTRAP.coreMap || {};
+          const codes = (map[String(cat)] || map[cat] || []).filter(Boolean);
+          updateCategoryCount(cat, codes, meta);
+        }
+      });
+    } else {
+      loadSections();
+    }
+    
+    // 필터 변경 후에도 선택 리스트는 항상 유지 (지연 호출로 DOM 렌더링 완료 후 업데이트)
+    // 일반교양 스텝(STEP === 6)에서는 필터 변경과 관계없이 항상 선택 리스트 표시
+    setTimeout(() => {
+      updateSelectedList();
+      // 일반교양 스텝에서는 선택 리스트가 항상 보이도록 강제 표시
+      if (STEP === 6) {
+        const listContainer = document.getElementById('selected-courses-list');
+        if (listContainer && selectedFids.size > 0) {
+          listContainer.style.display = 'block';
+        }
+      }
+    }, 200);
+  });
+});
+
+// Form 제출 전에 항상 hidden input 업데이트
+const stepForm = document.getElementById("step-navigation-form");
+if (stepForm) {
+  stepForm.addEventListener("submit", (e) => {
+    // 제출 전에 최신 선택 내역 업데이트
+    updateHiddenInputs();
+    // form 제출은 계속 진행
+  });
+}
+
+// 핵심교양 학점 설정 폼 제출 전에 hidden input 업데이트
+const coreCreditsForm = document.getElementById("core-credits-form");
+if (coreCreditsForm) {
+  coreCreditsForm.addEventListener("submit", (e) => {
+    // 제출 전에 최신 선택 내역 및 필터 값 업데이트
+    updateCoreCreditsForm();
+    // form 제출은 계속 진행
+  });
+  
+  // 핵심교양 학점 입력값이 변경될 때마다 경고 메시지 업데이트
+  const coreCreditsInput = coreCreditsForm.querySelector('input[name="core_credits"]');
+  if (coreCreditsInput) {
+    coreCreditsInput.addEventListener("input", () => {
+      const value = parseInt(coreCreditsInput.value) || null;
+      BOOTSTRAP.coreCredits = value;
+      if (STEP === 5) {
+        updateSelectedList(); // 경고 메시지 업데이트
+      }
+    });
+    
+    // 핵심교양 학점 입력값이 blur될 때도 경고 메시지 업데이트
+    coreCreditsInput.addEventListener("blur", () => {
+      const value = parseInt(coreCreditsInput.value) || null;
+      BOOTSTRAP.coreCredits = value;
+      if (STEP === 5) {
+        updateSelectedList(); // 경고 메시지 업데이트
+      }
+    });
+  }
+}
+
+updateHiddenInputs();
+
+// 학기 변경 시 현재 선택 내역을 서버에 저장한 후 학기 변경
+// (기존 선택 내역은 유지되고, 새로운 학기의 선택 내역이 추가됨)
+const semesterForm = document.getElementById("semester-form");
+const semesterSelect = document.getElementById("semester-select");
+if (semesterForm && semesterSelect && [2,3,4].includes(STEP)) {
+  semesterSelect.addEventListener("change", async (e) => {
+    e.preventDefault();
+    const newSemester = semesterSelect.value;
+    
+    // 현재 선택 내역을 서버에 저장 (기존 선택 내역과 병합)
+    updateHiddenInputs();
+    const selectedStr = Array.from(selectedFids).join(",");
+    const evalVal = document.getElementById("eval_choice")?.value || "전체";
+    const assignVal = document.getElementById("assign_choice")?.value || "전체";
+    const quizVal = document.getElementById("quiz_choice")?.value || "전체";
+    const creditVal = document.getElementById("credit_choice")?.value || "전체";
+    const sortVal = document.getElementById("sort_choice")?.value || "기본순";
+    
+    const form = new FormData();
+    form.append("step", STEP);
+    form.append("semester", BOOTSTRAP.semester); // 현재 학기
+    form.append("action", "save"); // 저장 액션
+    // 현재 선택 내역 전달 (서버에서 기존 선택 내역과 병합)
+    form.append("selected_fids", selectedStr);
+    form.append("eval_choice", evalVal);
+    form.append("assign_choice", assignVal);
+    form.append("quiz_choice", quizVal);
+    form.append("credit_choice", creditVal);
+    form.append("sort_choice", sortVal);
+    
+    try {
+      // 선택 내역 저장 (서버에서 기존 선택 내역과 병합)
+      await fetch("/recommend/step", {method: "POST", body: form});
+      // 저장 후 학기 변경 (서버에서 기존 선택 내역을 유지)
+      window.location.href = `/recommend?step=${STEP}&semester=${newSemester}`;
+    } catch (error) {
+      console.error("학기 변경 오류:", error);
+      // 오류 발생 시에도 학기 변경
+      window.location.href = `/recommend?step=${STEP}&semester=${newSemester}`;
+    }
+  });
+}
+
+if ([2,3,4,6].includes(STEP)) {
+  loadSections();
+} else if (STEP === 5) {
+  renderCoreCategories();
+  // Step 5 초기 로드 시 선택 리스트 즉시 표시 (서버 데이터 사용)
+  updateSelectedList();
+  
+  // 선택된 항목이 있으면 해당 카테고리 자동으로 열기 (선택 사항)
+  if (selectedFids.size > 0) {
+    setTimeout(() => {
+      const cats = ['1','2','3','4','5','6','창의','SW.AI'];
+      cats.forEach(cat => {
+        const body = document.getElementById(`core-body-${cat}`);
+        const toggle = document.getElementById(`core-toggle-${cat}`);
+        if (body && toggle && body.classList.contains("hidden")) {
+          // 카테고리 열기 (사용자가 확인할 수 있도록)
+          body.classList.remove("hidden");
+          toggle.textContent = "△";
+          loadCoreCategory(cat);
+        }
+      });
+    }, 300);
+  }
+}
+
+// Step 7 토글 함수들
+function toggleSelectedSummary() {
+  const content = document.getElementById('selected-summary-content');
+  const toggle = document.getElementById('selected-summary-toggle');
+  if (content && toggle) {
+    const isHidden = content.classList.contains('hidden');
+    content.classList.toggle('hidden');
+    // 토글 아이콘 회전 (▶가 90도 회전하여 ▼처럼 보이게)
+    if (isHidden) {
+      toggle.style.transform = 'rotate(90deg)';
+    } else {
+      toggle.style.transform = 'rotate(0deg)';
+    }
+  }
+}
+
+function toggleSchedule(index) {
+  const content = document.getElementById(`schedule-content-${index}`);
+  const toggle = document.getElementById(`schedule-toggle-${index}`);
+  if (content && toggle) {
+    content.classList.toggle('hidden');
+    toggle.style.transform = content.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(90deg)';
+    
+    // 시간표가 열릴 때 슬롯 위치 재계산
+    if (!content.classList.contains('hidden')) {
+      setTimeout(() => {
+        positionScheduleSlots(content);
+      }, 50);
+    }
+  }
+}
+
+function toggleAISchedule(index) {
+  const content = document.getElementById(`ai-schedule-content-${index}`);
+  const toggle = document.getElementById(`ai-schedule-toggle-${index}`);
+  if (content && toggle) {
+    content.classList.toggle('hidden');
+    toggle.style.transform = content.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(90deg)';
+    
+    // AI 시간표가 열릴 때 슬롯 위치 재계산
+    if (!content.classList.contains('hidden')) {
+      setTimeout(() => {
+        positionAIScheduleSlots(content);
+      }, 50);
+    }
+  }
+}
+
+function refreshAISchedule() {
+  // 현재 페이지 새로고침 (AI 추천이 다시 생성됨)
+  if (confirm('AI 추천 시간표를 다시 생성하시겠습니까? (페이지가 새로고침됩니다)')) {
+    window.location.reload();
+  }
+}
+
+async function generateAISchedule() {
+  const feedbackTextarea = document.getElementById('ai-feedback-input');
+  const feedback = feedbackTextarea ? feedbackTextarea.value.trim() : '';
+  
+  // 로딩 표시
+  const button = event.target;
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = '⏳ AI가 시간표를 생성하는 중...';
+  
+  try {
+    const response = await fetch('/api/ai-recommend/refresh', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        feedback: feedback || null
+      })
+    });
+    
+    const data = await response.json();
+    console.log('AI 추천 응답:', data);
+    
+    if (data.success && data.schedules && data.schedules.length > 0) {
+      // 성공: AI 추천 요청 섹션 숨기고 결과 표시
+      const requestSection = document.querySelector('[id^="ai-feedback-input"]')?.closest('.mb-6');
+      if (requestSection) {
+        requestSection.style.display = 'none';
+      }
+      
+      // AI 추천 시간표 동적 생성 및 표시
+      console.log('AI 시간표 렌더링 시작:', data.schedules);
+      renderAISchedules(data.schedules);
+      console.log('AI 시간표 렌더링 완료');
+      
+      button.disabled = false;
+      button.textContent = originalText;
+    } else {
+      console.error('AI 추천 실패:', data);
+      alert('시간표 생성에 실패했습니다. 다시 시도해주세요.');
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  } catch (error) {
+    console.error('AI 추천 생성 오류:', error);
+    alert('오류가 발생했습니다. 다시 시도해주세요.');
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+}
+
+async function refreshAIScheduleWithFeedback(index) {
+  const feedbackTextarea = document.getElementById(`ai-feedback-${index}`);
+  const feedback = feedbackTextarea ? feedbackTextarea.value.trim() : '';
+  
+  // 로딩 표시
+  const button = event.target;
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = '⏳ AI가 시간표를 생성하는 중...';
+  
+  try {
+    const response = await fetch('/api/ai-recommend/refresh', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        feedback: feedback || null
+      })
+    });
+    
+    const data = await response.json();
+    console.log('AI 추천 새로고침 응답:', data);
+    
+    if (data.success && data.schedules && data.schedules.length > 0) {
+      // 성공: 기존 시간표를 새 시간표로 교체
+      console.log('AI 시간표 새로고침 렌더링 시작:', data.schedules);
+      renderAISchedules(data.schedules);
+      console.log('AI 시간표 새로고침 렌더링 완료');
+      
+      button.disabled = false;
+      button.textContent = originalText;
+    } else {
+      console.error('AI 추천 새로고침 실패:', data);
+      alert('시간표 생성에 실패했습니다. 다시 시도해주세요.');
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  } catch (error) {
+    console.error('AI 추천 새로고침 오류:', error);
+    alert('오류가 발생했습니다. 다시 시도해주세요.');
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+}
+
+function renderAISchedules(schedules) {
+  console.log('renderAISchedules 호출됨, schedules:', schedules);
+  // AI 추천 시간표 컨테이너 찾기 또는 생성
+  let container = document.getElementById('ai-schedules-container');
+  if (!container) {
+    // 컨테이너가 없으면 생성
+    const requestSection = document.querySelector('[id^="ai-feedback-input"]')?.closest('.mb-6');
+    if (requestSection) {
+      container = document.createElement('div');
+      container.id = 'ai-schedules-container';
+      container.className = 'mb-6 border-2 border-purple-400 rounded-xl overflow-hidden bg-purple-50 shadow-lg';
+      container.innerHTML = `
+        <div class="p-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white">
+          <div class="flex items-center gap-2">
+            <span class="text-lg font-bold">🤖 AI 추천</span>
+          </div>
+        </div>
+      `;
+      requestSection.insertAdjacentElement('afterend', container);
+      console.log('AI 추천 컨테이너 생성됨');
+    } else {
+      console.error('AI 추천 섹션을 찾을 수 없습니다.');
+      return;
+    }
+  }
+  
+  // 기존 내용 제거 (헤더 제외)
+  const header = container.querySelector('.bg-gradient-to-r');
+  const headerHTML = header ? header.outerHTML : '';
+  container.innerHTML = headerHTML;
+  
+  // 각 시간표 렌더링
+  schedules.forEach((schedule, index) => {
+    console.log(`시간표 ${index} 렌더링 중:`, schedule);
+    const scheduleDiv = createAIScheduleHTML(schedule, index);
+    container.appendChild(scheduleDiv);
+  });
+  
+  console.log('시간표 렌더링 완료, 컨테이너:', container);
+  
+  // 슬롯 위치 계산
+  setTimeout(() => {
+    const layers = container.querySelectorAll('.ai-schedule-layer');
+    console.log('슬롯 위치 계산, layers:', layers.length);
+    layers.forEach(layer => {
+      positionAIScheduleSlots(layer);
+    });
+  }, 100);
+}
+
+function createAIScheduleHTML(schedule, index) {
+  const creditsByCat = schedule.credits_by_category || {};
+  const sections = schedule.sections || [];
+  const aiSuggestion = schedule.ai_suggestion || '';
+  
+  const div = document.createElement('div');
+  div.className = 'border-t-2 border-purple-300';
+  div.innerHTML = `
+    <button onclick="toggleAISchedule(${index})" class="w-full p-3 bg-purple-100 hover:bg-purple-200 flex items-center text-left">
+      <div class="text-purple-600 transition-transform mr-3 flex-shrink-0" id="ai-schedule-toggle-${index}" style="transform: rotate(90deg);">▼</div>
+      <div class="flex items-center gap-4 flex-1">
+        <div class="font-semibold text-sm text-purple-900">AI 추천 시간표</div>
+        <div class="text-xs text-purple-700">
+          총 학점: <b>${schedule.total_credits}</b>
+          | 전공필수: ${creditsByCat['전공필수'] || 0}
+          | 전공선택: ${creditsByCat['전공선택'] || 0}
+          | 기초/중점 교양: ${creditsByCat['기초/중점 교양'] || 0}
+          | 핵심교양: ${creditsByCat['핵심교양'] || 0}
+          | 일반교양: ${creditsByCat['일반교양'] || 0}
+        </div>
+      </div>
+    </button>
+    
+    <!-- 피드백 입력 섹션 (항상 표시) -->
+    <div class="p-3 bg-purple-50 border-t border-purple-200">
+      <div class="mb-2">
+        <textarea 
+          id="ai-feedback-${index}" 
+          class="w-full p-2 text-sm border border-purple-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
+          rows="3"
+          placeholder="무엇이든 부탁하세요"></textarea>
+      </div>
+      <button 
+        onclick="refreshAIScheduleWithFeedback(${index})" 
+        class="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors">
+        🔄 피드백 반영하여 새로 생성
+      </button>
+    </div>
+    
+    <!-- AI 시간표 내용 (토글) -->
+    <div id="ai-schedule-content-${index}" class="p-3 bg-white">
+      ${aiSuggestion ? `
+        <div class="mb-4 p-3 bg-blue-50 border-l-4 border-blue-400 rounded-lg">
+          <div class="flex items-start">
+            <div class="flex-shrink-0">
+              <svg class="h-5 w-5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+              </svg>
+            </div>
+            <div class="ml-2 flex-1">
+              <h4 class="text-sm font-semibold text-blue-900 mb-1">💡 AI 추천 제안</h4>
+              <div class="text-sm text-blue-800 whitespace-pre-line">${aiSuggestion}</div>
+            </div>
+          </div>
+        </div>
+      ` : ''}
+      
+      <div class="grid grid-cols-6 text-center text-xs font-semibold bg-purple-100 border-b rounded-t">
+        <div class="py-2">시간</div>
+        <div class="py-2">월</div>
+        <div class="py-2">화</div>
+        <div class="py-2">수</div>
+        <div class="py-2">목</div>
+        <div class="py-2">금</div>
+      </div>
+      <div class="relative">
+        <div class="grid grid-cols-6" style="grid-template-rows: repeat(13, 40px); max-height: 520px; overflow-y: auto;">
+          ${Array.from({length: 13}, (_, i) => {
+            const hour = 9 + i;
+            return `
+              <div class="text-xs text-right pr-2 border-r py-1.5">${String(hour).padStart(2, '0')}:00</div>
+              ${Array.from({length: 5}, () => '<div class="border-b border-r"></div>').join('')}
+            `;
+          }).join('')}
+        </div>
+        <div class="absolute inset-0 ai-schedule-layer" style="max-height: 520px; overflow-y: auto;">
+          ${renderScheduleSlots(sections)}
+        </div>
+      </div>
+      <div class="mt-2 text-xs">
+        <div class="font-semibold">웹강의</div>
+        <ul class="list-disc pl-5">
+          ${sections.filter(s => s.is_web).map(s => 
+            `<li>${s.course_name} (${s.course_id}) — ${s.prof || ''} — ${s.credit}학점</li>`
+          ).join('')}
+        </ul>
+      </div>
+    </div>
+  `;
+  return div;
+}
+
+function renderScheduleSlots(sections) {
+  // sections 데이터를 기반으로 슬롯 렌더링
+  // meetings 형식: [[day, start_slot, end_slot], ...]
+  let html = '';
+  sections.forEach(section => {
+    if (section.meetings && Array.isArray(section.meetings)) {
+      section.meetings.forEach(meeting => {
+        const [day, sslot, eslot] = meeting;
+        html += `
+          <div class="slot absolute rounded text-white p-2 overflow-hidden"
+               data-day="${day}"
+               data-sslot="${sslot}"
+               data-eslot="${eslot}"
+               style="box-sizing: border-box;">
+            <div class="font-semibold text-xs leading-tight mb-1">${section.course_name || ''}</div>
+            <div class="opacity-90 text-xs leading-tight">${section.course_id || ''}</div>
+          </div>
+        `;
+      });
+    }
+  });
+  return html;
+}
+
+function positionScheduleSlots(container) {
+  // container가 .schedule-layer인 경우와 그 부모인 경우 모두 처리
+  const layer = container.classList.contains('schedule-layer') 
+    ? container 
+    : container.querySelector('.schedule-layer');
+  if (!layer) return;
+  
+  const slots = layer.querySelectorAll('.slot');
+  slots.forEach(el => {
+    const day = Number(el.dataset.day || 0);
+    const sslot = Number(el.dataset.sslot || 1);
+    const eslot = Number(el.dataset.eslot || sslot+1);
+    // 30분 단위 슬롯을 1시간 단위로 변환
+    const startHourSlot = Math.ceil((sslot - 1) / 2) + 1;
+    const endHourSlot = Math.ceil((eslot - 1) / 2) + 1;
+    const slotHeight = 40; // Step 7은 40px 높이
+    const top = (startHourSlot - 1) * slotHeight;
+    const height = (endHourSlot - startHourSlot) * slotHeight;
+    el.style.left = `calc((100%/6) * ${day+1})`;
+    el.style.width = `calc(100%/6)`;
+    el.style.top = `${top}px`;
+    el.style.height = `${height}px`;
+    el.style.background = 'rgba(59,130,246,0.9)';
+  });
+}
+
+function positionAIScheduleSlots(container) {
+  // container가 .ai-schedule-layer인 경우와 그 부모인 경우 모두 처리
+  const layer = container.classList.contains('ai-schedule-layer') 
+    ? container 
+    : container.querySelector('.ai-schedule-layer');
+  if (!layer) return;
+  
+  const slots = layer.querySelectorAll('.slot');
+  slots.forEach(el => {
+    const day = Number(el.dataset.day || 0);
+    const sslot = Number(el.dataset.sslot || 1);
+    const eslot = Number(el.dataset.eslot || sslot+1);
+    // 30분 단위 슬롯을 1시간 단위로 변환
+    const startHourSlot = Math.ceil((sslot - 1) / 2) + 1;
+    const endHourSlot = Math.ceil((eslot - 1) / 2) + 1;
+    const slotHeight = 40; // Step 7은 40px 높이
+    const top = (startHourSlot - 1) * slotHeight;
+    const height = (endHourSlot - startHourSlot) * slotHeight;
+    el.style.left = `calc((100%/6) * ${day+1})`;
+    el.style.width = `calc(100%/6)`;
+    el.style.top = `${top}px`;
+    el.style.height = `${height}px`;
+    el.style.background = 'rgba(147,51,234,0.9)'; // 보라색 (AI 추천)
+  });
+}
+
+// Position schedule slots (step7) - 1시간 단위로 변환
+if (BOOTSTRAP && BOOTSTRAP.step === 7) {
+  // 초기 로드 시 모든 시간표 슬롯 위치 계산
+  setTimeout(() => {
+    // 일반 시간표 슬롯 위치 계산
+    document.querySelectorAll('.schedule-layer').forEach(layer => {
+      // layer의 부모 요소를 container로 사용
+      const container = layer.parentElement;
+      if (container) {
+        positionScheduleSlots(container);
+      }
+    });
+    // AI 시간표 슬롯 위치 계산
+    document.querySelectorAll('.ai-schedule-layer').forEach(layer => {
+      // layer의 부모 요소를 container로 사용
+      const container = layer.parentElement;
+      if (container) {
+        positionAIScheduleSlots(container);
+      }
+    });
+  }, 100);
+}
+  </script>
+{% endblock %}

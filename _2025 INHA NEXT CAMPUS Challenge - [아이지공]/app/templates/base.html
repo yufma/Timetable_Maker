@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ko">
+    <head>
+        <link rel="icon" href="/static/favicon.ico" />
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>{% block title %}Timetable Recommender{% endblock %}</title>
+        <!-- Tailwind (CDN for dev) -->
+        <script src="https://cdn.tailwindcss.com"></script>
+        <link rel="stylesheet" href="/static/custom.css" />       
+    </head>
+    <body class="min-h-screen bg-gray-50 text-gray-800">
+        <!-- Navbar -->
+        <header class="bg-white/80 backdrop-blur border-b sticky top-0 z-30">
+            <nav class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+                <a href="/" class="font-bold text-xl">⏱️ TimePlanner</a>
+                <div class="flex items-center gap-3">
+                    {% if user %}
+                        <span class="text-sm">안녕하세요, <b>{{ user.name }}</b>님</span>
+                        <!--마이페이지 버튼 추가 -->
+                        <a href="/me" class="px-3 py-1.5 rounded-lg border hover:bg-gray-100">마이페이지</a>
+                        <a href="/logout" class="px-3 py-1.5 rounded-lg border hover:bg-gray-100">로그아웃</a>
+                    {% else %}
+                        <a href="/login" class="px-3 py-1.5 rounded-lg border hover:bg-gray-100">로그인</a>
+                        <a href="/signup" class="px-3 py-1.5 rounded-lg bg-black text-white hover:bg-gray-800">회원가입</a>
+                    {% endif %}
+                </div>
+            </nav>
+        </header>
+
+
+        <!-- Page content -->
+        <main class="max-w-6xl mx-auto px-4 py-8">
+            {% block content %}{% endblock %}
+        </main>
+
+        <footer class="border-t mt-16">
+            <div class="max-w-6xl mx-auto px-4 py-6 text-sm text-gray-500">
+                © timePlanner — Built with FastAPI
+            </div>
+        </footer>
+        {% block extra_scripts %}{% endblock %}
+    </body>
+</html>
